@@ -16,6 +16,7 @@ Internal source package is `acled_viz`.
 
 ```bash
 uv sync --extra dev --extra docs
+uv sync --extra dev --extra docs --extra osm
 uv run acled-viz site build --mode full --start 2023-09-04 --end 2026-02-18 --tail-days 45
 ```
 

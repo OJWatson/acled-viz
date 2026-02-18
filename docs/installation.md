@@ -4,6 +4,7 @@
 
 ```bash
 uv sync --extra dev --extra docs
+uv sync --extra dev --extra docs --extra osm
 ```
 
 For full-mode integrations, install the `trace` and `motac` packages from the `ojwatson` GitHub repos in your environment.
