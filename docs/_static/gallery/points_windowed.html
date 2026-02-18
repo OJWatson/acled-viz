@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gaza ACLED Trailing Window Explorer</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+body {
+  margin: 0;
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+  background: #efe9dd;
+  color: #23374f;
+}
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 18px 24px;
+}
+.controls {
+  display: grid;
+  gap: 10px;
+  background: #f8f4ec;
+  border: 1px solid #d8cfbd;
+  border-radius: 10px;
+  padding: 12px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 220px 1fr 100px;
+  gap: 10px;
+  align-items: center;
+}
+.row label { font-size: 14px; font-weight: 600; }
+.row output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: #1d2f44;
+}
+#plot {
+  height: 680px;
+  margin-top: 12px;
+  border: 1px solid #d8cfbd;
+  border-radius: 10px;
+  background: #f8f4ec;
+}
+.meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #42576f;
+  display: flex;
+  justify-content: space-between;
+}
+button {
+  width: 100px;
+  background: #264f7f;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  height: 34px;
+  cursor: pointer;
+}
+button:hover { background: #1d4068; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2 style="margin:0 0 8px;">Gaza ACLED Trailing Window Explorer</h2>
+  <div class="controls">
+    <div class="row">
+      <label for="frame">Animation Frame</label>
+      <input id="frame" type="range" min="0" max="2" step="1" value="2" />
+      <output id="frameOut"></output>
+    </div>
+    <div class="row">
+      <label for="tail">Point Lifetime (days)</label>
+      <input id="tail" type="range" min="1" max="30" step="1" value="30" />
+      <output id="tailOut"></output>
+    </div>
+    <div class="row" style="grid-template-columns:220px auto 1fr;">
+      <label>Playback</label>
+      <button id="play" type="button">Play</button>
+      <span style="font-size:13px;color:#54697f;">
+        Marker size = fatalities, color = fatalities > 0, alpha fades with age.
+      </span>
+    </div>
+  </div>
+  <div id="plot"></div>
+  <div class="meta"><span id="dateLabel"></span><span id="countLabel"></span></div>
+</div>
+<script>
+const data = {"grouped":{"0":[[31.299664987754632,34.28066609770714,0.0],[31.329313145145424,34.3226946389459,1.0],[31.359930880412346,34.36063625661694,2.0],[31.3886532508376,34.400325812911916,3.0],[31.419323229115612,34.440349307500696,0.0],[31.300689880537906,34.480782515867844,1.0]],"1":[[31.300691065055425,34.318281777281356,1.0],[31.329771524027464,34.36150879166217,2.0],[31.362827519489677,34.40097233211106,3.0],[31.392088226379414,34.44024372268252,0.0],[31.421867369467954,34.48062937697922,1.0],[31.304011286042524,34.281439939378984,2.0]],"2":[[31.302426126075677,34.36080192881874,2.0],[31.335322260600588,34.39760472905412,3.0],[31.36509169181986,34.43745289214785,0.0],[31.394216524094503,34.48309643881201,1.0],[31.424691299416526,34.280383193523846,2.0],[31.303942159665713,34.31899686614267,3.0]],"3":[[31.307331608847786,34.40039444051072,3.0],[31.335206214883154,34.43912150060428,0.0],[31.36595184238146,34.47989183621782,1.0],[31.39559945657483,34.279838169951645,2.0],[31.424374495942264,34.318948414264895,3.0],[31.306039494048274,34.36083746927117,0.0]],"4":[[31.308364803458705,34.43733686980481,0.0],[31.336753729354452,34.48252163703139,1.0],[31.367846038208167,34.27967281453783,2.0],[31.39665457349286,34.31731324534915,3.0],[31.42818664206023,34.36086325371783,0.0],[31.309523387998272,34.40009584344901,1.0]],"5":[[31.30860238070292,34.48113176979127,1.0],[31.33854422740792,34.28121721482087,2.0],[31.368875202937218,34.3228998999513,3.0],[31.398668067440827,34.35845694127856,0.0],[31.428877456217617,34.39857861303769,1.0],[31.30884000002678,34.4383121895657,2.0]],"6":[[31.31078723122064,34.28288506291921,2.0],[31.34381150802416,34.31938331236561,3.0],[31.372664914811253,34.3600301936049,0.0],[31.40282801564022,34.39879071365692,1.0],[31.434150742889077,34.43959361291224,2.0],[31.312611634915935,34.48225119047831,3.0]],"7":[[31.314682980302234,34.32223392790993,3.0],[31.34160356504425,34.360041829927745,0.0],[31.373462964087217,34.40096091262266,1.0],[31.404156316149727,34.440364712902614,2.0],[31.434009586843533,34.47999949757482,3.0],[31.313835437844823,34.27995897004651,0.0]],"8":[[31.31440128378308,34.35875094599886,0.0],[31.346539564636334,34.401631492740776,1.0],[31.377876886751782,34.44007538355909,2.0],[31.405373666031302,34.481134602027,3.0],[31.436442143689987,34.28016972306091,0.0],[31.318981410693347,34.319712922802054,1.0]],"9":[[31.31535078854404,34.39837019423807,1.0],[31.345921577412753,34.439607277975135,2.0],[31.37798766980434,34.479558572173204,3.0],[31.40621481910102,34.280156183091,0.0],[31.438305937751824,34.31899932270336,1.0],[31.316106297618333,34.35811947222045,2.0]],"10":[[31.31940062820105,34.43805171151863,2.0],[31.35007227518463,34.480764591588816,3.0],[31.38007665517049,34.279937034733095,0.0],[31.408303658161874,34.322109823738664,1.0],[31.439987678594143,34.3599371972695,2.0],[31.320993560088922,34.39971510122903,3.0]],"11":[[31.32440207123762,34.4781367625569,3.0],[31.352806792392972,34.28116951215242,0.0],[31.382414153777273,34.31996085094166,1.0],[31.412355944814678,34.35832541130754,2.0],[31.441145808181254,34.40048524848973,3.0],[31.32086865285334,34.440199487026504,0.0]],"12":[[31.324363569230606,34.28005693342216,0.0],[31.353634708184313,34.31936473806238,1.0],[31.385406435852865,34.35966234462572,2.0],[31.41434572240822,34.400167128742154,3.0],[31.443810722346743,34.440300567812606,0.0],[31.32393661077021,34.47921214597447,1.0]],"13":[[31.325041289008233,34.32178798844355,1.0],[31.357019315176338,34.36089549026309,2.0],[31.384202806235976,34.39872280087122,3.0],[31.41542525531166,34.441811824821336,0.0],[31.444492501925197,34.47866627836696,1.0],[31.325333771492094,34.28086824589562,2.0]]},"frame_labels":["2023-10-01","2023-10-08","2023-10-14"],"frame_day_indices":[0,7,13],"x_range":[31.279664987754632,31.464492501925196],"y_range":[34.25967281453783,34.503096438812015]};
+const frameSlider = document.getElementById('frame');
+const tailSlider = document.getElementById('tail');
+const frameOut = document.getElementById('frameOut');
+const tailOut = document.getElementById('tailOut');
+const dateLabel = document.getElementById('dateLabel');
+const countLabel = document.getElementById('countLabel');
+const playBtn = document.getElementById('play');
+let timer = null;
+
+function markerSize(f) {
+  return 7 + Math.min(26, Math.sqrt(Math.max(f, 0)) * 2.6);
+}
+
+function updatePlot() {
+  const frameIdx = Number(frameSlider.value);
+  const tailDays = Number(tailSlider.value);
+  const currentDay = data.frame_day_indices[frameIdx];
+  const startDay = Math.max(0, currentDay - tailDays + 1);
+
+  const fatalX = [], fatalY = [], fatalS = [], fatalC = [];
+  const nonX = [], nonY = [], nonS = [], nonC = [];
+
+  for (let d = startDay; d <= currentDay; d += 1) {
+    const dayEvents = data.grouped[d] || [];
+    const age = currentDay - d;
+    const ageAlpha = Math.max(0.08, 1 - age / Math.max(tailDays, 1));
+    for (const ev of dayEvents) {
+      const lat = ev[0], lon = ev[1], fatalities = ev[2];
+      if (fatalities > 0) {
+        fatalX.push(lat);
+        fatalY.push(lon);
+        fatalS.push(markerSize(fatalities));
+        fatalC.push(`rgba(228,87,68,${(ageAlpha * 0.9).toFixed(4)})`);
+      } else {
+        nonX.push(lat);
+        nonY.push(lon);
+        nonS.push(markerSize(0));
+        nonC.push(`rgba(79,111,143,${(ageAlpha * 0.35).toFixed(4)})`);
+      }
+    }
+  }
+
+  const traces = [
+    {
+      type: 'scattergl',
+      mode: 'markers',
+      name: 'fatalities = 0',
+      x: nonX,
+      y: nonY,
+      marker: { size: nonS, color: nonC, line: {width: 0} },
+      hovertemplate: 'lat %{x:.4f}<br>lon %{y:.4f}<br>fatalities 0<extra></extra>'
+    },
+    {
+      type: 'scattergl',
+      mode: 'markers',
+      name: 'fatalities > 0',
+      x: fatalX,
+      y: fatalY,
+      marker: { size: fatalS, color: fatalC, line: {width: 0} },
+      hovertemplate: 'lat %{x:.4f}<br>lon %{y:.4f}<br>fatalities > 0<extra></extra>'
+    }
+  ];
+
+  const layout = {
+    margin: {l: 70, r: 20, t: 60, b: 70},
+    paper_bgcolor: '#f8f4ec',
+    plot_bgcolor: '#f8f4ec',
+    xaxis: {title: 'latitude', range: data.x_range, zeroline: false, gridcolor: '#dcd4c6'},
+    yaxis: {title: 'longitude', range: data.y_range, zeroline: false, gridcolor: '#dcd4c6'},
+    legend: {orientation: 'h', x: 0.01, y: 1.1},
+    title: `Gaza ACLED: trailing ${tailDays} day window`
+  };
+
+  Plotly.react('plot', traces, layout, {responsive: true, displaylogo: false});
+  frameOut.value = `${frameIdx + 1} / ${data.frame_labels.length}`;
+  tailOut.value = `${tailDays} days`;
+  dateLabel.textContent = `Frame date: ${data.frame_labels[frameIdx]}`;
+  countLabel.textContent = `Points shown: ${fatalX.length + nonX.length}`;
+}
+
+frameSlider.addEventListener('input', updatePlot);
+tailSlider.addEventListener('input', updatePlot);
+
+playBtn.addEventListener('click', () => {
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+    playBtn.textContent = 'Play';
+    return;
+  }
+  playBtn.textContent = 'Pause';
+  timer = setInterval(() => {
+    const next = Number(frameSlider.value) + 1;
+    frameSlider.value = next >= data.frame_labels.length ? '0' : String(next);
+    updatePlot();
+  }, 330);
+});
+
+updatePlot();
+</script>
+</body>
+</html>
+

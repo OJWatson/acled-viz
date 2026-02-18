@@ -122,6 +122,12 @@ def _fetch_with_trace(start: date, end: date) -> pd.DataFrame:
 
     local_snapshot_candidates = [
         Path(__file__).resolve().parents[4]
+        / "trace"
+        / "src"
+        / "trace"
+        / "data_files"
+        / "acled_example.csv",
+        Path(__file__).resolve().parents[4]
         / "motac"
         / "tests"
         / "fixtures"

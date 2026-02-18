@@ -61,12 +61,19 @@ def _cache_needs_refresh(
     if cached_mode != mode:
         return True
 
-    if start is None or end is None:
-        return False
-
     query = payload.get("query", {})
     cached_start = _parse_iso_date(query.get("start"))
     cached_end = _parse_iso_date(query.get("end"))
+
+    if start is None or end is None:
+        if mode == "full":
+            default_full_start = date(2023, 9, 4)
+            if cached_start is None or cached_start > default_full_start:
+                return True
+            if cached_end is None or cached_end < date.today():
+                return True
+        return False
+
     return cached_start != start or cached_end != end
 
 
@@ -80,7 +87,12 @@ def ensure_event_cache(
     if not _cache_needs_refresh(mode=mode, start=start, end=end, region=region):
         return
 
-    resolved_start = start or date(2023, 10, 1)
+    if start is not None:
+        resolved_start = start
+    elif mode == "full":
+        resolved_start = date(2023, 9, 4)
+    else:
+        resolved_start = date(2023, 10, 1)
     if end is not None:
         resolved_end = end
     elif mode == "full":
@@ -135,9 +147,10 @@ def build_site(
     mode: str = "demo",
     start: date | None = None,
     end: date | None = None,
+    tail_days: int = 30,
 ) -> SiteBuildResult:
     ensure_event_cache(mode=mode, start=start, end=end)
-    build_gallery_assets()
+    build_gallery_assets(tail_days=tail_days)
 
     registry = init_registry(forecasts_dir())
     runs = list_runs(registry.db_path)
