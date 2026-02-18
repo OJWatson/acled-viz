@@ -91,6 +91,7 @@ def viz_build_gallery(
     typer.echo(f"Wrote {assets.hero_points_mp4}")
     typer.echo(f"Wrote {assets.kde_weekly_mp4}")
     typer.echo(f"Wrote {assets.summary_counts_png}")
+    typer.echo(f"Wrote {assets.fatalities_facets_png}")
 
 
 @forecasts_app.command("init-db")

@@ -21,3 +21,10 @@
 ## Summary Counts
 
 ![Summary counts](_static/gallery/summary_counts.png)
+
+## Fatalities Facet Grid
+
+This view bins events across the full cached horizon into evenly spaced time slices,
+then colours fatalities on a log scale.
+
+![Fatalities facet grid](_static/gallery/fatalities_facets.png)

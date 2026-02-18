@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
+import os
+import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -75,20 +79,75 @@ def _canonicalize_events(frame: pd.DataFrame, start: date) -> pd.DataFrame:
 
 
 def _fetch_with_trace(start: date, end: date) -> pd.DataFrame:
+    fetch_acled_data = None
     try:
-        from trace_conflict.acled import fetch_events  # type: ignore
-    except Exception as exc:  # pragma: no cover - optional dependency path
-        try:
-            from trace.acled import fetch_events  # type: ignore
-        except Exception:
-            raise RuntimeError(
-                "trace dependency is unavailable; use --mode demo or install trace/motac deps"
-            ) from exc
+        trace_data_module = importlib.import_module("trace.data")
+        fetch_acled_data = getattr(trace_data_module, "fetch_acled_data", None)
+    except Exception:  # pragma: no cover - optional dependency path
+        fetch_acled_data = None
 
-    result = fetch_events(region="gaza", start_date=start.isoformat(), end_date=end.isoformat())
-    if not isinstance(result, pd.DataFrame):
-        raise RuntimeError("trace fetch_events did not return a DataFrame")
-    return result
+    if not callable(fetch_acled_data):
+        local_trace_data = (
+            Path(__file__).resolve().parents[4] / "trace" / "src" / "trace" / "data.py"
+        )
+        if local_trace_data.exists():
+            spec = importlib.util.spec_from_file_location("trace_data_local", local_trace_data)
+            if spec and spec.loader:
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                fetch_acled_data = getattr(module, "fetch_acled_data", None)
+
+    if not callable(fetch_acled_data):
+        raise RuntimeError(
+            "trace dependency is unavailable; use --mode demo or install trace/motac deps"
+        )
+
+    api_token = os.getenv("ACLED_API_KEY") or os.getenv("ACLED_API_TOKEN")
+    api_email = os.getenv("ACLED_EMAIL")
+
+    if api_token and api_email:
+        try:
+            result = fetch_acled_data(
+                country="Palestine",
+                start_date=start.isoformat(),
+                end_date=end.isoformat(),
+                api_token=api_token,
+                api_email=api_email,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Trace ACLED fetch failed: {exc}") from exc
+        if not isinstance(result, pd.DataFrame):
+            raise RuntimeError("trace fetch_acled_data did not return a DataFrame")
+        return result
+
+    local_snapshot_candidates = [
+        Path(__file__).resolve().parents[4]
+        / "motac"
+        / "tests"
+        / "fixtures"
+        / "acled"
+        / "acled_events_example.csv",
+        Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "acled_events_example.csv",
+    ]
+    for snapshot in local_snapshot_candidates:
+        if snapshot.exists():
+            warnings.warn(
+                (
+                    f"Using local ACLED snapshot at {snapshot} because "
+                    "ACLED_API_KEY/ACLED_EMAIL are not set."
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            result = pd.read_csv(snapshot)
+            if "event_date" in result.columns:
+                result["event_date"] = pd.to_datetime(result["event_date"], errors="coerce")
+            return result
+
+    raise RuntimeError(
+        "Full mode requires ACLED credentials (ACLED_API_KEY and ACLED_EMAIL) "
+        "or a local ACLED snapshot from motac fixtures."
+    )
 
 
 def fetch_gaza_events(
@@ -111,6 +170,11 @@ def fetch_gaza_events(
         raw = _fetch_with_trace(start=start, end=end)
     else:
         raise ValueError("mode must be 'demo' or 'full'")
+
+    if "country" in raw.columns:
+        raw = raw[raw["country"].eq("Palestine")]
+    if "admin1" in raw.columns:
+        raw = raw[raw["admin1"].eq("Gaza Strip")]
 
     raw["event_date"] = pd.to_datetime(raw.get("event_date"), errors="coerce")
     raw = raw[(raw["event_date"].dt.date >= start) & (raw["event_date"].dt.date <= end)]

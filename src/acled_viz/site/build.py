@@ -32,6 +32,44 @@ class SiteBuildResult:
     run_id: str
 
 
+def _parse_iso_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _cache_needs_refresh(
+    *,
+    mode: str,
+    start: date | None,
+    end: date | None,
+    region: str,
+) -> bool:
+    cache = cache_paths(region=region)
+    if not cache.events_path.exists() or not cache.meta_path.exists():
+        return True
+
+    try:
+        payload = json.loads(cache.meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return True
+
+    cached_mode = payload.get("mode")
+    if cached_mode != mode:
+        return True
+
+    if start is None or end is None:
+        return False
+
+    query = payload.get("query", {})
+    cached_start = _parse_iso_date(query.get("start"))
+    cached_end = _parse_iso_date(query.get("end"))
+    return cached_start != start or cached_end != end
+
+
 def ensure_event_cache(
     *,
     mode: str,
@@ -39,12 +77,17 @@ def ensure_event_cache(
     start: date | None = None,
     end: date | None = None,
 ) -> None:
-    cache = cache_paths(region=region)
-    if cache.events_path.exists() and start is None and end is None:
+    if not _cache_needs_refresh(mode=mode, start=start, end=end, region=region):
         return
 
     resolved_start = start or date(2023, 10, 1)
-    resolved_end = end or date(2023, 12, 31)
+    if end is not None:
+        resolved_end = end
+    elif mode == "full":
+        resolved_end = date.today()
+    else:
+        resolved_end = date(2023, 11, 30)
+
     fetch_gaza_events(
         start=resolved_start,
         end=resolved_end,
