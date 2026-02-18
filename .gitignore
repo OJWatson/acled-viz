@@ -13,3 +13,8 @@ dist/
 # Local data and caches (do not commit raw ACLED/cache outputs)
 data/
 *.duckdb
+
+# Keep only a stable forecast demo folder for docs
+docs/_static/forecasts/demo_*
+!docs/_static/forecasts/demo_latest/
+!docs/_static/forecasts/demo_latest/*
