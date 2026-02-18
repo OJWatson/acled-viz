@@ -127,7 +127,7 @@ def _draw_osm_overlay(
                 continue
             lat = [pt[0] for pt in line]
             lon = [pt[1] for pt in line]
-            ax.plot(lat, lon, color="#6f8ca8", linewidth=0.55, alpha=0.25, zorder=0)
+            ax.plot(lat, lon, color="#6f8ca8", linewidth=0.8, alpha=0.4, zorder=0)
 
     if show_poi and not overlay.poi.empty:
         ax.scatter(
@@ -457,12 +457,12 @@ function updatePlot() {
 
   if (roadsToggle.checked && data.roads_x.length > 0) {
     traces.push({
-      type: 'scattergl',
+      type: 'scatter',
       mode: 'lines',
       name: 'roads',
       x: data.roads_x,
       y: data.roads_y,
-      line: {color: 'rgba(111,140,168,0.33)', width: 1},
+      line: {color: 'rgba(73,108,140,0.62)', width: 1.2},
       hoverinfo: 'skip'
     });
   }
@@ -502,13 +502,23 @@ function updatePlot() {
   );
 
   const layout = {
-    margin: {l: 70, r: 20, t: 58, b: 65},
+    margin: {l: 70, r: 20, t: 105, b: 65},
     paper_bgcolor: '#f8f4ec',
     plot_bgcolor: '#f8f4ec',
     xaxis: {title: 'latitude', range: data.x_range, zeroline: false, gridcolor: '#dcd4c6'},
     yaxis: {title: 'longitude', range: data.y_range, zeroline: false, gridcolor: '#dcd4c6'},
-    legend: {orientation: 'h', x: 0.01, y: 1.1},
-    title: `Gaza ACLED: trailing ${tailDays} day window`
+    legend: {
+      orientation: 'h',
+      x: 0.0,
+      y: 1.03,
+      xanchor: 'left',
+      yanchor: 'bottom',
+      bgcolor: 'rgba(248,244,236,0.88)'
+    },
+    title: {
+      text: `Gaza ACLED: trailing ${tailDays} day window`,
+      y: 0.985
+    }
   };
 
   Plotly.react('plot', traces, layout, {responsive: true, displaylogo: false});

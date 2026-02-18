@@ -109,7 +109,7 @@ def _draw_osm_overlay(
                 continue
             lat = [pt[0] for pt in line]
             lon = [pt[1] for pt in line]
-            ax.plot(lat, lon, color="#dde5ee", linewidth=0.42, alpha=0.36, zorder=4)
+            ax.plot(lat, lon, color="#dce4ec", linewidth=0.7, alpha=0.55, zorder=4)
 
     if show_poi and not overlay.poi.empty:
         ax.scatter(

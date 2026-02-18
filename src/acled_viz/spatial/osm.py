@@ -114,6 +114,45 @@ def _resample_line(line: list[list[float]], max_points: int = 40) -> list[list[f
     return out
 
 
+def _line_length(line: list[list[float]]) -> float:
+    if len(line) < 2:
+        return 0.0
+    total = 0.0
+    for idx in range(1, len(line)):
+        lat0, lon0 = line[idx - 1]
+        lat1, lon1 = line[idx]
+        total += float(np.hypot(lat1 - lat0, lon1 - lon0))
+    return total
+
+
+def _downsample_roads(
+    roads: list[list[list[float]]],
+    *,
+    max_lines: int = 1800,
+    keep_major: int = 600,
+) -> list[list[list[float]]]:
+    if len(roads) <= max_lines:
+        return roads
+
+    lengths = np.array([_line_length(line) for line in roads], dtype=float)
+    order = np.argsort(-lengths)
+
+    major_count = min(keep_major, max_lines, len(order))
+    major_idx = order[:major_count]
+
+    remaining = order[major_count:]
+    extra_count = max(0, min(max_lines - major_count, len(remaining)))
+    if extra_count > 0:
+        rng = np.random.default_rng(20260218)
+        sampled = rng.choice(remaining, size=extra_count, replace=False)
+        keep_idx = np.concatenate([major_idx, sampled])
+    else:
+        keep_idx = major_idx
+
+    keep_sorted = np.sort(keep_idx.astype(int))
+    return [roads[int(idx)] for idx in keep_sorted]
+
+
 def _fetch_roads_osmnx(
     *,
     lat_min: float,
@@ -164,9 +203,7 @@ def _fetch_roads_osmnx(
                 continue
             roads.append(_resample_line(line, max_points=36))
 
-        if len(roads) > 700:
-            roads = roads[:700]
-        return roads
+        return _downsample_roads(roads)
     finally:
         ox.settings.max_query_area_size = old_max_area
         ox.settings.requests_timeout = old_timeout
