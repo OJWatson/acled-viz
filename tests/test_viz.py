@@ -4,7 +4,6 @@ from datetime import date
 
 import pandas as pd
 
-from acled_viz.data.acled import fetch_gaza_events
 from acled_viz.data.demo import demo_events
 from acled_viz.site.assets import build_gallery_assets
 from acled_viz.viz.kde import _build_horizon_slices
@@ -15,8 +14,10 @@ from acled_viz.viz.summaries import _normalized_event_frame as normalize_summary
 from acled_viz.viz.transforms import normalize_event_frame as normalize_point_events
 
 
-def test_build_gallery_demo_outputs_files() -> None:
-    fetch_gaza_events(start=date(2023, 10, 1), end=date(2023, 10, 14), mode="demo")
+def test_build_gallery_demo_outputs_files(tmp_path, monkeypatch) -> None:
+    frame = demo_events(start=date(2023, 10, 1), end=date(2023, 10, 14))
+    monkeypatch.setattr("acled_viz.site.assets.load_cached_events", lambda: frame)
+    monkeypatch.setattr("acled_viz.site.assets.gallery_assets_dir", lambda: tmp_path)
     assets = build_gallery_assets(fps=6, by="week")
 
     assert assets.hero_points_mp4.exists()

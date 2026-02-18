@@ -8,15 +8,20 @@ from acled_viz.forecasts.registry import init_registry, list_runs
 from acled_viz.site.build import build_forecast_report
 
 
-def test_forecast_registry_and_report_outputs() -> None:
-    registry = init_registry(forecasts_dir())
+def test_forecast_registry_and_report_outputs(tmp_path) -> None:
+    root = forecasts_dir(base=tmp_path)
+    registry = init_registry(root)
     assert registry.db_path.exists()
 
-    run_id = ingest_demo(forecasts_dir())
+    run_id = ingest_demo(root)
     runs = list_runs(registry.db_path)
     assert run_id in set(runs["run_id"])
 
-    out = build_forecast_report(run_id)
+    out = build_forecast_report(
+        run_id,
+        base_dir=tmp_path,
+        latest_dir=tmp_path / "latest_forecasts",
+    )
     perf = out / "perf_timeseries.png"
     compare = out / "map_compare_h1.png"
     metrics_path = out / "metrics.json"

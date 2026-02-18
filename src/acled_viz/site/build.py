@@ -108,8 +108,14 @@ def ensure_event_cache(
     )
 
 
-def build_forecast_report(run_id: str) -> Path:
-    registry = init_registry(forecasts_dir())
+def build_forecast_report(
+    run_id: str,
+    *,
+    base_dir: Path | None = None,
+    latest_dir: Path | None = None,
+) -> Path:
+    registry_root = forecasts_dir(base=base_dir)
+    registry = init_registry(registry_root)
     pred_path = get_run_predictions_path(registry.db_path, run_id)
     preds = pd.read_parquet(pred_path)
     actuals = demo_actual_counts()
@@ -117,7 +123,8 @@ def build_forecast_report(run_id: str) -> Path:
     metrics = evaluate_predictions(preds, actuals)
     write_metrics(registry.db_path, metrics)
 
-    out_dir = forecast_assets_dir(run_id)
+    out_dir = forecast_assets_dir(run_id) if base_dir is None else (registry_root / run_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
     metrics_json = out_dir / "metrics.json"
     plot_perf_timeseries(metrics, out_dir / "perf_timeseries.png")
     plot_map_compare_h1(preds, actuals, out_dir / "map_compare_h1.png")
@@ -136,10 +143,10 @@ def build_forecast_report(run_id: str) -> Path:
         + "\n",
         encoding="utf-8",
     )
-    latest_dir = Path("docs") / "_static" / "forecasts" / "demo_latest"
-    latest_dir.mkdir(parents=True, exist_ok=True)
+    resolved_latest_dir = latest_dir or (Path("docs") / "_static" / "forecasts" / "demo_latest")
+    resolved_latest_dir.mkdir(parents=True, exist_ok=True)
     for name in ("perf_timeseries.png", "map_compare_h1.png", "metrics.json"):
-        shutil.copy2(out_dir / name, latest_dir / name)
+        shutil.copy2(out_dir / name, resolved_latest_dir / name)
     return out_dir
 
 
