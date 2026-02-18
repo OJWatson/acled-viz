@@ -11,7 +11,7 @@ build/
 dist/
 
 # Local data and caches (do not commit raw ACLED/cache outputs)
-data/
+/data/
 *.duckdb
 
 # Keep only a stable forecast demo folder for docs
