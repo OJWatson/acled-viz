@@ -115,10 +115,10 @@ def _draw_osm_overlay(
         ax.scatter(
             overlay.poi["latitude"],
             overlay.poi["longitude"],
-            s=10,
+            s=20,
             marker="^",
-            c="#8ac2ff",
-            alpha=0.5,
+            c="#2f9a52",
+            alpha=0.7,
             linewidths=0,
             zorder=5,
         )

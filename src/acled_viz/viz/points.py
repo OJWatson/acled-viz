@@ -133,10 +133,10 @@ def _draw_osm_overlay(
         ax.scatter(
             overlay.poi["latitude"],
             overlay.poi["longitude"],
-            s=18,
+            s=26,
             marker="^",
-            c="#1c4e80",
-            alpha=0.62,
+            c="#2f9a52",
+            alpha=0.74,
             linewidths=0.2,
             edgecolors="#f3f0e8",
             zorder=2,
@@ -390,11 +390,16 @@ button:hover { background: #1d4068; }
       </div>
       <output id="layerOut"></output>
     </div>
+    <div class="row">
+      <label for="poiSize">POI Size</label>
+      <input id="poiSize" type="range" min="7" max="18" step="1" value="11" />
+      <output id="poiSizeOut"></output>
+    </div>
     <div class="row" style="grid-template-columns:220px auto 1fr;">
       <label>Playback</label>
       <button id="play" type="button">Play</button>
       <span style="font-size:13px;color:#54697f;">
-        Marker size = fatalities, color = fatalities > 0, alpha fades with age.
+        Marker size = fatalities; POI marker size is adjustable; alpha fades with age.
       </span>
     </div>
   </div>
@@ -411,6 +416,8 @@ const tailOut = document.getElementById('tailOut');
 const speedOut = document.getElementById('speedOut');
 const roadsToggle = document.getElementById('roadsToggle');
 const poiToggle = document.getElementById('poiToggle');
+const poiSizeSlider = document.getElementById('poiSize');
+const poiSizeOut = document.getElementById('poiSizeOut');
 const layerOut = document.getElementById('layerOut');
 const dateLabel = document.getElementById('dateLabel');
 const countLabel = document.getElementById('countLabel');
@@ -468,13 +475,19 @@ function updatePlot() {
   }
 
   if (poiToggle.checked && data.poi_lat.length > 0) {
+    const poiSize = Number(poiSizeSlider.value);
     traces.push({
       type: 'scattergl',
       mode: 'markers',
       name: 'POI',
       x: data.poi_lat,
       y: data.poi_lon,
-      marker: {size: 8, symbol: 'triangle-up', color: 'rgba(28,78,128,0.65)', line: {width: 0}},
+      marker: {
+        size: poiSize,
+        symbol: 'triangle-up',
+        color: 'rgba(47,154,82,0.88)',
+        line: {width: 0}
+      },
       text: data.poi_name,
       hovertemplate: '%{text}<br>lat %{x:.4f}<br>lon %{y:.4f}<extra></extra>'
     });
@@ -531,6 +544,7 @@ function updatePlot() {
   frameOut.value = `${frameIdx + 1} / ${data.frame_labels.length}`;
   tailOut.value = `${tailDays} days`;
   speedOut.value = `${Number(speedSlider.value)} fps`;
+  poiSizeOut.value = `${Number(poiSizeSlider.value)} px`;
   const activeLayers = (
     `${roadsToggle.checked ? 'roads ' : ''}${poiToggle.checked ? 'poi' : ''}`
   ).trim();
@@ -567,6 +581,7 @@ tailSlider.addEventListener('input', updatePlot);
 speedSlider.addEventListener('input', updatePlot);
 roadsToggle.addEventListener('input', updatePlot);
 poiToggle.addEventListener('input', updatePlot);
+poiSizeSlider.addEventListener('input', updatePlot);
 
 playBtn.addEventListener('click', () => {
   if (timerId !== null) {
