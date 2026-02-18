@@ -355,7 +355,37 @@ Acceptance criteria:
 
 ---
 
-### milestone_id: M6.END
+### milestone_id: M6.OSM
+Objective:
+- Complete OSM enrichment so existing visuals can optionally include roads and places of interest (POIs).
+
+Boundaries:
+- No changes to model logic or forecast schema.
+- OSM overlays must be optional and cache-backed.
+
+Outputs:
+- `acled_viz.spatial.osm` implemented with:
+  - region-scoped OSM fetch and local cache
+  - roads and POI extraction helpers
+- Visual overlays available in core views:
+  - points animation
+  - KDE/heatmap animation
+  - interactive trailing-window widget
+- CLI options for overlay toggles, for example:
+  - `--show-roads`
+  - `--show-poi`
+- Docs updates:
+  - gallery examples with and without overlays
+  - clear note on optional network dependency and local caching
+
+Acceptance criteria:
+- [ ] `uv run acled-viz viz build-gallery --mode full --show-roads --show-poi` produces overlay-enabled assets without breaking non-overlay mode.
+- [ ] Unit tests cover OSM cache read/write and no-network fallback behavior.
+- [ ] `docs/gallery.md` includes at least one overlay-enabled example and explains toggles.
+
+---
+
+### milestone_id: M7.END
 Objective:
 - Harden and finalise for public release: reproducibility, guardrails, licensing, and “no sensitive data” guarantees.
 
@@ -411,7 +441,7 @@ CI workflows required:
 - `docs.yml`: build docs; deploy on main
 
 CI_GATED milestones:
-- `M6.END` is CI_GATED (must wait for CI green before concluding).
+- `M7.END` is CI_GATED (must wait for CI green before concluding).
 
 Failure handling:
 - smallest hotfix slice; rerun local gates; push; re-wait CI.
@@ -469,7 +499,7 @@ E2 (Forecast geometry)
 Commit format:
 - `[M0.REALIGN] <summary>`
 - `[M1] <summary>` ...
-- `[M6.END] <summary>`
+- `[M7.END] <summary>`
 
 Required artefacts:
 - `docs/agent/PLAN.md` updated per milestone
