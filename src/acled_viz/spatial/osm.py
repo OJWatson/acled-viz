@@ -53,7 +53,12 @@ def _empty_overlay() -> OSMOverlay:
     )
 
 
-def _region_bbox(region: str = "gaza") -> tuple[float, float, float, float]:
+def _region_bbox(
+    region: str = "gaza",
+    bounds: tuple[float, float, float, float] | None = None,
+) -> tuple[float, float, float, float]:
+    if bounds is not None:
+        return bounds
     if region != "gaza":
         raise ValueError(f"Unsupported region for OSM overlay: {region}")
     cfg = gaza_region()
@@ -117,6 +122,7 @@ def _fetch_roads_osmnx(
     lon_max: float,
 ) -> list[list[list[float]]]:
     import osmnx as ox  # type: ignore
+    bbox = (lat_max, lat_min, lon_max, lon_min)
 
     try:
         graph = ox.graph_from_bbox(
@@ -128,7 +134,10 @@ def _fetch_roads_osmnx(
             simplify=True,
         )
     except TypeError:
-        graph = ox.graph_from_bbox(lat_max, lat_min, lon_max, lon_min, network_type="drive")
+        try:
+            graph = ox.graph_from_bbox(bbox, network_type="drive", simplify=True)
+        except TypeError:
+            graph = ox.graph_from_bbox(bbox, network_type="drive")
 
     edges = ox.graph_to_gdfs(graph, nodes=False, edges=True, fill_edge_geometry=True)
 
@@ -163,6 +172,7 @@ def _fetch_poi_osmnx(
     lon_max: float,
 ) -> pd.DataFrame:
     import osmnx as ox  # type: ignore
+    bbox = (lat_max, lat_min, lon_max, lon_min)
 
     tags = {
         "amenity": True,
@@ -182,9 +192,12 @@ def _fetch_poi_osmnx(
         )
     except Exception:
         try:
-            features = ox.geometries_from_bbox(lat_max, lat_min, lon_max, lon_min, tags=tags)
+            features = ox.features_from_bbox(bbox, tags=tags)
         except Exception:
-            return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
+            try:
+                features = ox.geometries_from_bbox(lat_max, lat_min, lon_max, lon_min, tags=tags)
+            except Exception:
+                return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
 
     rows: list[dict[str, Any]] = []
     for record in features.reset_index(drop=True).to_dict(orient="records"):
@@ -234,8 +247,9 @@ def _fetch_overlay_osmnx(
     region: str,
     include_roads: bool,
     include_poi: bool,
+    bounds: tuple[float, float, float, float] | None = None,
 ) -> OSMOverlay:
-    lat_min, lat_max, lon_min, lon_max = _region_bbox(region)
+    lat_min, lat_max, lon_min, lon_max = _region_bbox(region, bounds=bounds)
 
     roads: list[list[list[float]]] = []
     poi = pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
@@ -324,6 +338,7 @@ def get_overlay(
     include_poi: bool = False,
     refresh: bool = False,
     base: Path | None = None,
+    bounds: tuple[float, float, float, float] | None = None,
 ) -> OSMOverlay:
     if not include_roads and not include_poi:
         return _empty_overlay()
@@ -357,6 +372,7 @@ def get_overlay(
             region=region,
             include_roads=include_roads,
             include_poi=include_poi,
+            bounds=bounds,
         )
         write_overlay_cache(paths, fetched, source="osmnx")
         return fetched

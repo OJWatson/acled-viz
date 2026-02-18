@@ -33,10 +33,19 @@ def build_gallery_assets(
 ) -> GalleryAssets:
     events = load_cached_events()
     out = gallery_assets_dir()
+    lat_min = float(events["latitude"].min()) if not events.empty else 31.2
+    lat_max = float(events["latitude"].max()) if not events.empty else 31.7
+    lon_min = float(events["longitude"].min()) if not events.empty else 34.2
+    lon_max = float(events["longitude"].max()) if not events.empty else 34.7
+    lat_pad = max((lat_max - lat_min) * 0.1, 0.01)
+    lon_pad = max((lon_max - lon_min) * 0.1, 0.01)
+    bounds = (lat_min - lat_pad, lat_max + lat_pad, lon_min - lon_pad, lon_max + lon_pad)
+
     overlay = get_overlay(
         include_roads=show_roads,
         include_poi=show_poi,
         refresh=osm_refresh,
+        bounds=bounds,
     )
 
     hero = animate_points(
