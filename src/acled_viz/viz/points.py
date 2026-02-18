@@ -127,7 +127,7 @@ def _draw_osm_overlay(
                 continue
             lat = [pt[0] for pt in line]
             lon = [pt[1] for pt in line]
-            ax.plot(lat, lon, color="#6f8ca8", linewidth=0.8, alpha=0.4, zorder=0)
+            ax.plot(lat, lon, color="#567896", linewidth=1.05, alpha=0.62, zorder=0)
 
     if show_poi and not overlay.poi.empty:
         ax.scatter(
@@ -328,7 +328,7 @@ body {
   color: #1d2f44;
 }
 #plot {
-  height: 700px;
+  height: 730px;
   margin-top: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -355,7 +355,7 @@ button:hover { background: #1d4068; }
 @media (max-width: 900px) {
   .row { grid-template-columns: 1fr; }
   .row output { text-align: left; }
-  #plot { height: 520px; }
+  #plot { height: 580px; }
 }
 </style>
 </head>
@@ -457,12 +457,12 @@ function updatePlot() {
 
   if (roadsToggle.checked && data.roads_x.length > 0) {
     traces.push({
-      type: 'scatter',
+      type: 'scattergl',
       mode: 'lines',
       name: 'roads',
       x: data.roads_x,
       y: data.roads_y,
-      line: {color: 'rgba(73,108,140,0.62)', width: 1.2},
+      line: {color: 'rgba(58,90,118,0.8)', width: 1.7},
       hoverinfo: 'skip'
     });
   }
@@ -502,7 +502,7 @@ function updatePlot() {
   );
 
   const layout = {
-    margin: {l: 70, r: 20, t: 105, b: 65},
+    margin: {l: 70, r: 24, t: 138, b: 72},
     paper_bgcolor: '#f8f4ec',
     plot_bgcolor: '#f8f4ec',
     xaxis: {title: 'latitude', range: data.x_range, zeroline: false, gridcolor: '#dcd4c6'},
@@ -510,14 +510,20 @@ function updatePlot() {
     legend: {
       orientation: 'h',
       x: 0.0,
-      y: 1.03,
+      y: 1.045,
       xanchor: 'left',
       yanchor: 'bottom',
+      itemwidth: 86,
+      itemsizing: 'constant',
       bgcolor: 'rgba(248,244,236,0.88)'
     },
     title: {
       text: `Gaza ACLED: trailing ${tailDays} day window`,
-      y: 0.985
+      x: 0.5,
+      y: 0.992,
+      xanchor: 'center',
+      yanchor: 'top',
+      pad: {b: 10}
     }
   };
 

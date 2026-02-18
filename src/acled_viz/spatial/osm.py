@@ -28,6 +28,27 @@ class OSMOverlay:
     poi: pd.DataFrame
 
 
+_IGNORED_HIGHWAY = {
+    "bridleway",
+    "bus_guideway",
+    "construction",
+    "corridor",
+    "cycleway",
+    "elevator",
+    "escalator",
+    "footway",
+    "path",
+    "pedestrian",
+    "platform",
+    "planned",
+    "proposed",
+    "raceway",
+    "service_area",
+    "steps",
+    "track",
+}
+
+
 def has_osmnx() -> bool:
     try:
         import osmnx  # noqa: F401
@@ -106,6 +127,33 @@ def _geometry_points(geom: Any) -> list[tuple[float, float]]:
     return []
 
 
+def _geometry_lines(geom: Any) -> list[list[tuple[float, float]]]:
+    if geom is None:
+        return []
+
+    geom_type = getattr(geom, "geom_type", "")
+
+    if geom_type in {"LineString", "LinearRing"} and hasattr(geom, "coords"):
+        return [[(float(y), float(x)) for x, y in geom.coords]]
+
+    if geom_type == "MultiLineString" and hasattr(geom, "geoms"):
+        lines: list[list[tuple[float, float]]] = []
+        for sub in geom.geoms:
+            if hasattr(sub, "coords"):
+                points = [(float(y), float(x)) for x, y in sub.coords]
+                if len(points) >= 2:
+                    lines.append(points)
+        return lines
+
+    if geom_type.startswith("Multi") and hasattr(geom, "geoms"):
+        lines: list[list[tuple[float, float]]] = []
+        for sub in geom.geoms:
+            lines.extend(_geometry_lines(sub))
+        return lines
+
+    return []
+
+
 def _resample_line(line: list[list[float]], max_points: int = 40) -> list[list[float]]:
     if len(line) <= max_points:
         return line
@@ -128,8 +176,9 @@ def _line_length(line: list[list[float]]) -> float:
 def _downsample_roads(
     roads: list[list[list[float]]],
     *,
-    max_lines: int = 1800,
-    keep_major: int = 600,
+    max_lines: int = 3200,
+    keep_major: int = 1200,
+    grid_size: int = 24,
 ) -> list[list[list[float]]]:
     if len(roads) <= max_lines:
         return roads
@@ -138,22 +187,58 @@ def _downsample_roads(
     order = np.argsort(-lengths)
 
     major_count = min(keep_major, max_lines, len(order))
-    major_idx = order[:major_count]
+    selected_idx = list(order[:major_count].astype(int))
+    selected = set(selected_idx)
 
-    remaining = order[major_count:]
-    extra_count = max(0, min(max_lines - major_count, len(remaining)))
+    lat_mid = np.array([line[len(line) // 2][0] for line in roads], dtype=float)
+    lon_mid = np.array([line[len(line) // 2][1] for line in roads], dtype=float)
+    lat_min = float(lat_mid.min())
+    lon_min = float(lon_mid.min())
+    lat_span = max(float(lat_mid.max() - lat_min), 1e-9)
+    lon_span = max(float(lon_mid.max() - lon_min), 1e-9)
+
+    spatial_target = min(max_lines - len(selected_idx), 900)
+    covered_cells: set[tuple[int, int]] = set()
+    for idx in order[major_count:]:
+        idx_i = int(idx)
+        if idx_i in selected:
+            continue
+        row = int(((lat_mid[idx_i] - lat_min) / lat_span) * (grid_size - 1))
+        col = int(((lon_mid[idx_i] - lon_min) / lon_span) * (grid_size - 1))
+        cell = (row, col)
+        if cell in covered_cells:
+            continue
+        covered_cells.add(cell)
+        selected.add(idx_i)
+        selected_idx.append(idx_i)
+        if len(selected_idx) >= major_count + spatial_target:
+            break
+
+    remaining = np.array([int(idx) for idx in order if int(idx) not in selected], dtype=int)
+    extra_count = max(0, min(max_lines - len(selected_idx), len(remaining)))
     if extra_count > 0:
         rng = np.random.default_rng(20260218)
-        sampled = rng.choice(remaining, size=extra_count, replace=False)
-        keep_idx = np.concatenate([major_idx, sampled])
-    else:
-        keep_idx = major_idx
+        selected_idx.extend(rng.choice(remaining, size=extra_count, replace=False).astype(int))
 
-    keep_sorted = np.sort(keep_idx.astype(int))
+    keep_sorted = np.sort(np.array(selected_idx, dtype=int))
     return [roads[int(idx)] for idx in keep_sorted]
 
 
-def _fetch_roads_osmnx(
+def _highway_allowed(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, (list, tuple, set)):
+        tags = [str(v).strip().lower() for v in value if str(v).strip()]
+    else:
+        raw = str(value).strip().lower()
+        tags = [part.strip() for part in raw.split(";") if part.strip()]
+
+    if not tags:
+        return False
+    return any(tag not in _IGNORED_HIGHWAY for tag in tags)
+
+
+def _fetch_roads_features_osmnx(
     *,
     lat_min: float,
     lat_max: float,
@@ -167,6 +252,68 @@ def _fetch_roads_osmnx(
     ox.settings.max_query_area_size = max(float(old_max_area), 2_000_000_000.0)
     ox.settings.requests_timeout = max(int(old_timeout), 180)
     bbox = (lon_min, lat_min, lon_max, lat_max)
+    tags = {"highway": True}
+    try:
+        try:
+            features = ox.features_from_bbox(
+                north=lat_max,
+                south=lat_min,
+                east=lon_max,
+                west=lon_min,
+                tags=tags,
+            )
+        except Exception:
+            try:
+                features = ox.features_from_bbox(bbox, tags=tags)
+            except Exception:
+                features = ox.geometries_from_bbox(
+                    lat_max,
+                    lat_min,
+                    lon_max,
+                    lon_min,
+                    tags=tags,
+                )
+
+        if features.empty:
+            return []
+        roads: list[list[list[float]]] = []
+        for record in features.reset_index(drop=True).to_dict(orient="records"):
+            if not _highway_allowed(record.get("highway")):
+                continue
+            for points in _geometry_lines(record.get("geometry")):
+                line = [[lat, lon] for lat, lon in points]
+                line = _clip_line_to_bbox(
+                    line,
+                    lat_min=lat_min,
+                    lat_max=lat_max,
+                    lon_min=lon_min,
+                    lon_max=lon_max,
+                )
+                if len(line) < 2:
+                    continue
+                roads.append(_resample_line(line, max_points=48))
+
+        return _downsample_roads(roads)
+    finally:
+        ox.settings.max_query_area_size = old_max_area
+        ox.settings.requests_timeout = old_timeout
+
+
+def _fetch_roads_graph_osmnx(
+    *,
+    lat_min: float,
+    lat_max: float,
+    lon_min: float,
+    lon_max: float,
+) -> list[list[list[float]]]:
+    import osmnx as ox  # type: ignore
+
+    old_max_area = ox.settings.max_query_area_size
+    old_timeout = ox.settings.requests_timeout
+    ox.settings.max_query_area_size = max(float(old_max_area), 2_000_000_000.0)
+    ox.settings.requests_timeout = max(int(old_timeout), 180)
+    bbox = (lon_min, lat_min, lon_max, lat_max)
+
     try:
         try:
             graph = ox.graph_from_bbox(
@@ -174,39 +321,63 @@ def _fetch_roads_osmnx(
                 south=lat_min,
                 east=lon_max,
                 west=lon_min,
-                network_type="drive",
+                network_type="all_public",
                 simplify=True,
             )
         except TypeError:
             try:
-                graph = ox.graph_from_bbox(bbox, network_type="drive", simplify=True)
+                graph = ox.graph_from_bbox(bbox, network_type="all_public", simplify=True)
             except TypeError:
-                graph = ox.graph_from_bbox(bbox, network_type="drive")
+                graph = ox.graph_from_bbox(bbox, network_type="all_public")
 
         edges = ox.graph_to_gdfs(graph, nodes=False, edges=True, fill_edge_geometry=True)
 
         roads: list[list[list[float]]] = []
         for geom in edges.get("geometry", []):
-            points = _geometry_points(geom)
-            if len(points) < 2:
-                continue
-
-            line = [[lat, lon] for lat, lon in points]
-            line = _clip_line_to_bbox(
-                line,
-                lat_min=lat_min,
-                lat_max=lat_max,
-                lon_min=lon_min,
-                lon_max=lon_max,
-            )
-            if len(line) < 2:
-                continue
-            roads.append(_resample_line(line, max_points=36))
+            for points in _geometry_lines(geom):
+                line = [[lat, lon] for lat, lon in points]
+                line = _clip_line_to_bbox(
+                    line,
+                    lat_min=lat_min,
+                    lat_max=lat_max,
+                    lon_min=lon_min,
+                    lon_max=lon_max,
+                )
+                if len(line) < 2:
+                    continue
+                roads.append(_resample_line(line, max_points=36))
 
         return _downsample_roads(roads)
     finally:
         ox.settings.max_query_area_size = old_max_area
         ox.settings.requests_timeout = old_timeout
+
+
+def _fetch_roads_osmnx(
+    *,
+    lat_min: float,
+    lat_max: float,
+    lon_min: float,
+    lon_max: float,
+) -> list[list[list[float]]]:
+    try:
+        roads = _fetch_roads_features_osmnx(
+            lat_min=lat_min,
+            lat_max=lat_max,
+            lon_min=lon_min,
+            lon_max=lon_max,
+        )
+        if roads:
+            return roads
+    except Exception:
+        pass
+
+    return _fetch_roads_graph_osmnx(
+        lat_min=lat_min,
+        lat_max=lat_max,
+        lon_min=lon_min,
+        lon_max=lon_max,
+    )
 
 
 def _fetch_poi_osmnx(
