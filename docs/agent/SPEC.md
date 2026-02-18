@@ -16,7 +16,7 @@ It is written for low-noise, milestone-based execution by an agentic coding syst
 Problem: We have modelling packages (`trace`, `motac`) but no dedicated, high-quality, reproducible “front-end” to (a) curate Gaza conflict event data, (b) generate compelling spatio-temporal visualisations, and (c) track and communicate forecast performance over time.
 
 Target end-state:
-- A new repo/package (working name: **`gaza-viz`**, Python import: `gazaviz`) that provides:
+- A new repo/package (working name: **`acled-viz`**, Python import: `acled_viz`) that provides:
   - data ingestion + caching for Gaza ACLED events (via `trace`);
   - a visualisation toolkit producing both **website-ready assets** (MP4/GIF/PNG/HTML) and reusable plotting APIs;
   - a forecast registry (database-backed) to ingest forecast runs (from `motac`) and compute/visualise accuracy.
@@ -27,7 +27,7 @@ Target end-state:
   - a separate documentation section covers package API, CLI, configs, and reproducibility.
 
 Definition of done (one sentence):
-- Done when `uv run gazaviz site build --mode demo` produces a complete Sphinx site (HTML) with a hero animation, gallery, and forecasts pages, and `uv run pytest -q` passes, without requiring ACLED credentials.
+- Done when `uv run acled-viz site build --mode demo` produces a complete Sphinx site (HTML) with a hero animation, gallery, and forecasts pages, and `uv run pytest -q` passes, without requiring ACLED credentials.
 
 ---
 
@@ -57,8 +57,8 @@ Definition of done (one sentence):
 
 ## 3) Repo Targets
 
-- repo_id: gaza-viz
-  repo_path: /home/oai/.openclaw/workspace/repos/gaza-viz
+- repo_id: acled-viz
+  repo_path: /home/oai/.openclaw/workspace/repos/acled-viz
   branch: main
 
 Notes:
@@ -71,9 +71,9 @@ Notes:
 ### 4.1 Package layout (strict)
 
 ```
-gaza-viz/
+acled-viz/
   pyproject.toml
-  src/gazaviz/
+  src/acled_viz/
     __init__.py
 
     core/
@@ -213,13 +213,13 @@ Boundaries:
 - No forecast registry yet.
 
 Outputs:
-- Packaging scaffold (`pyproject.toml`, `src/gazaviz`)
+- Packaging scaffold (`pyproject.toml`, `src/acled_viz`)
 - `scripts/ci.sh` and `scripts/test.sh`
 - Sphinx docs skeleton with placeholder landing/gallery/forecasts pages
 - `docs/agent/PLAN.md` (Now/Next/Later)
 
 Acceptance criteria (testable):
-- [ ] `uv run python -c "import gazaviz; print(gazaviz.__version__)"` prints a version
+- [ ] `uv run python -c "import acled_viz; print(acled_viz.__version__)"` prints a version
 - [ ] `uv run ruff check .` passes
 - [ ] `uv run pytest -q` passes (even if only trivial tests)
 - [ ] `cd docs && uv run make html` succeeds using demo assets
@@ -235,12 +235,12 @@ Boundaries:
 - No forecast ingestion yet.
 
 Outputs:
-- `gazaviz.data.acled.fetch_gaza_events(...)`
+- `acled_viz.data.acled.fetch_gaza_events(...)`
 - local cache write/read: `events.parquet` + `meta.json`
 - demo dataset remains for CI/docs
 
 Acceptance criteria:
-- [ ] `uv run gazaviz data fetch-acled --region gaza --start 2023-10-01 --end 2023-10-14 --mode demo` creates:
+- [ ] `uv run acled-viz data fetch-acled --region gaza --start 2023-10-01 --end 2023-10-14 --mode demo` creates:
   - `data/acled/gaza/events.parquet`
   - `data/acled/gaza/meta.json`
 - [ ] Unit tests validate:
@@ -258,16 +258,16 @@ Boundaries:
 - Focus on “conflict evolution over time” visual products.
 
 Outputs:
-- `gazaviz.viz.points.animate_points(...)`
-- `gazaviz.viz.kde.animate_kde(...)`
-- `gazaviz.viz.summaries.plot_timeseries(...)`
+- `acled_viz.viz.points.animate_points(...)`
+- `acled_viz.viz.kde.animate_kde(...)`
+- `acled_viz.viz.summaries.plot_timeseries(...)`
 - export utilities to:
   - MP4 (hero + gallery)
   - PNG (thumbnail tiles)
   - HTML (plotly interactive; optional)
 
 Acceptance criteria:
-- [ ] `uv run gazaviz viz build-gallery --mode demo` writes:
+- [ ] `uv run acled-viz viz build-gallery --mode demo` writes:
   - `docs/_static/gallery/hero_points.mp4`
   - `docs/_static/gallery/kde_weekly.mp4`
   - `docs/_static/gallery/summary_counts.png`
@@ -284,20 +284,20 @@ Boundaries:
 - Focus on durable storage, ingestion and retrieval.
 
 Outputs:
-- `gazaviz.forecasts.registry` using DuckDB:
+- `acled_viz.forecasts.registry` using DuckDB:
   - initialise DB
   - register runs
   - list runs
   - attach artefact paths
-- `gazaviz.forecasts.schema` dataclasses for run metadata + predictions
-- `gazaviz.forecasts.ingest_motac` minimal ingestion path:
+- `acled_viz.forecasts.schema` dataclasses for run metadata + predictions
+- `acled_viz.forecasts.ingest_motac` minimal ingestion path:
   - (A) run motac workflow for a given dataset + substrate and persist predictions
   - (B) ingest an existing motac output directory if provided (best-effort)
 
 Acceptance criteria:
-- [ ] `uv run gazaviz forecasts init-db` creates `data/forecasts/registry.duckdb`
-- [ ] `uv run gazaviz forecasts ingest-motac --mode demo` registers 1 demo run with predictions parquet
-- [ ] `uv run gazaviz forecasts list-runs` prints that run
+- [ ] `uv run acled-viz forecasts init-db` creates `data/forecasts/registry.duckdb`
+- [ ] `uv run acled-viz forecasts ingest-motac --mode demo` registers 1 demo run with predictions parquet
+- [ ] `uv run acled-viz forecasts list-runs` prints that run
 
 ---
 
@@ -320,7 +320,7 @@ Outputs:
   - rolling performance charts
 
 Acceptance criteria:
-- [ ] `uv run gazaviz forecasts build-report --run-id <demo_run_id>` writes:
+- [ ] `uv run acled-viz forecasts build-report --run-id <demo_run_id>` writes:
   - `docs/_static/forecasts/<run_id>/perf_timeseries.png`
   - `docs/_static/forecasts/<run_id>/map_compare_h1.png`
   - `docs/_static/forecasts/<run_id>/metrics.json`
@@ -374,7 +374,7 @@ Acceptance criteria:
 - [ ] `uv run ruff check .` passes
 - [ ] `uv run pytest -q` passes
 - [ ] `cd docs && uv run make html` passes (demo mode)
-- [ ] `uv run gazaviz site build --mode demo` completes end-to-end and writes `docs/_build/html/index.html`
+- [ ] `uv run acled-viz site build --mode demo` completes end-to-end and writes `docs/_build/html/index.html`
 
 ---
 
@@ -400,7 +400,7 @@ If absent/early bootstrapping:
 1. `uv run ruff check .`
 2. `uv run python -m pytest -q`
 3. `cd docs && uv run make html`
-4. `uv run gazaviz site build --mode demo`
+4. `uv run acled-viz site build --mode demo`
 
 ---
 
@@ -440,9 +440,9 @@ mitigations:
 ## 11) Escalation Points (predeclared decisions)
 
 E0 (Repo name and import name)
-- Trigger: if `gazaviz` conflicts with existing internal naming.
+- Trigger: if `acled-viz` conflicts with existing internal naming.
 - Options:
-  A) `gazaviz` (recommended default)
+  A) `acled-viz` (recommended default)
   B) `conflictviz` (more general)
   C) `gaza_atlas` (more narrative)
 - Recommended: A
@@ -474,7 +474,7 @@ Commit format:
 Required artefacts:
 - `docs/agent/PLAN.md` updated per milestone
 - durable logs:
-  - `~/.openclaw/workspace/logs/gaza-viz/<utc_ts>_<milestone_id>.log`
+  - `~/.openclaw/workspace/logs/acled-viz/<utc_ts>_<milestone_id>.log`
 
 Outcome fields (record in final summary per milestone):
 - repo_id, repo_path, milestone_id, branch, executed, commit_sha, pushed,
@@ -485,14 +485,14 @@ Outcome fields (record in final summary per milestone):
 ## Appendix A) CLI surface (planned)
 
 ```
-gazaviz data fetch-acled --region gaza --start YYYY-MM-DD --end YYYY-MM-DD [--api-token ...]
-gazaviz data show-cache
-gazaviz viz build-gallery [--mode demo|full] [--fps 10] [--by day|week]
-gazaviz forecasts init-db
-gazaviz forecasts ingest-motac --run-dir <path>  OR  --mode demo
-gazaviz forecasts list-runs
-gazaviz forecasts build-report --run-id <id>
-gazaviz site build --mode demo|full
+acled-viz data fetch-acled --region gaza --start YYYY-MM-DD --end YYYY-MM-DD [--api-token ...]
+acled-viz data show-cache
+acled-viz viz build-gallery [--mode demo|full] [--fps 10] [--by day|week]
+acled-viz forecasts init-db
+acled-viz forecasts ingest-motac --run-dir <path>  OR  --mode demo
+acled-viz forecasts list-runs
+acled-viz forecasts build-report --run-id <id>
+acled-viz site build --mode demo|full
 ```
 
 ---
@@ -503,4 +503,3 @@ gazaviz site build --mode demo|full
 - Demo data are synthetic and included for testing/docs only.
 - Users who have ACLED access may fetch data locally and generate derived visual assets.
 - Derived visualisations published to a website should be reviewed for compliance with ACLED terms and any institutional guidance.
-

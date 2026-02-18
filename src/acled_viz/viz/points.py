@@ -8,6 +8,7 @@ from pathlib import Path
 import imageio.v2 as imageio
 import numpy as np
 import pandas as pd
+from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 
 from acled_viz.viz.styling import apply_style
@@ -51,20 +52,62 @@ def _rgba_colors(ages: np.ndarray, fatalities: np.ndarray, tail_days: int) -> np
     if len(ages) == 0:
         return np.zeros((0, 4))
 
-    base_alpha = np.clip(1.0 - (ages / max(float(tail_days), 1.0)), 0.08, 0.95)
+    age_alpha = np.clip(1.0 - (ages / max(float(tail_days), 1.0)), 0.08, 0.98)
     fatal_mask = fatalities > 0
 
     colors = np.zeros((len(ages), 4), dtype=float)
-    colors[~fatal_mask, 0] = 79 / 255
-    colors[~fatal_mask, 1] = 111 / 255
-    colors[~fatal_mask, 2] = 143 / 255
-    colors[~fatal_mask, 3] = base_alpha[~fatal_mask] * 0.35
+    colors[~fatal_mask, 0] = 89 / 255
+    colors[~fatal_mask, 1] = 112 / 255
+    colors[~fatal_mask, 2] = 136 / 255
+    colors[~fatal_mask, 3] = age_alpha[~fatal_mask] * 0.3
 
-    colors[fatal_mask, 0] = 228 / 255
-    colors[fatal_mask, 1] = 87 / 255
-    colors[fatal_mask, 2] = 68 / 255
-    colors[fatal_mask, 3] = base_alpha[fatal_mask] * 0.9
+    colors[fatal_mask, 0] = 226 / 255
+    colors[fatal_mask, 1] = 88 / 255
+    colors[fatal_mask, 2] = 64 / 255
+    colors[fatal_mask, 3] = age_alpha[fatal_mask] * 0.9
     return colors
+
+
+def _plot_activity_context(
+    *,
+    ax: plt.Axes,
+    daily_counts: pd.Series,
+    frame_day: pd.Timestamp,
+    tail_days: int,
+) -> None:
+    rolling = daily_counts.rolling(window=14, min_periods=1).mean()
+
+    ax.fill_between(
+        daily_counts.index,
+        daily_counts.values,
+        color="#9cb0c6",
+        alpha=0.22,
+        linewidth=0,
+    )
+    ax.plot(
+        daily_counts.index,
+        daily_counts.values,
+        color="#607c99",
+        linewidth=0.9,
+        alpha=0.8,
+    )
+    ax.plot(
+        rolling.index,
+        rolling.values,
+        color="#a4483f",
+        linewidth=2.0,
+        label="14-day mean",
+    )
+
+    tail_start = frame_day - pd.Timedelta(days=max(1, tail_days) - 1)
+    ax.axvspan(tail_start, frame_day, color="#c95c4d", alpha=0.12, lw=0)
+    ax.axvline(frame_day, color="#264f7f", linewidth=1.2)
+
+    ax.set_ylabel("events/day")
+    ax.grid(alpha=0.2)
+    ax.legend(loc="upper left", frameon=False, fontsize=9)
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=4, maxticks=8))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
 
 def animate_points(
@@ -77,55 +120,104 @@ def animate_points(
     apply_style()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    clean = add_deterministic_jitter(normalize_event_frame(events))
-
-    x_min = clean["latitude_jitter"].min() if not clean.empty else 31.2
-    x_max = clean["latitude_jitter"].max() if not clean.empty else 31.6
-    y_min = clean["longitude_jitter"].min() if not clean.empty else 34.2
-    y_max = clean["longitude_jitter"].max() if not clean.empty else 34.6
-    x_margin = max((x_max - x_min) * 0.06, 0.02)
-    y_margin = max((y_max - y_min) * 0.06, 0.02)
-
-    frames: list[np.ndarray] = []
+    clean = add_deterministic_jitter(normalize_event_frame(events), scale=0.0034)
     frame_days = _build_frame_days(clean, by=by)
+    frames: list[np.ndarray] = []
 
-    if len(frame_days) == 0:
-        fig, ax = plt.subplots(figsize=(9, 5.6), dpi=130)
-        ax.set_facecolor("#f5f1e8")
-        ax.set_title("Gaza Conflict Events (No Data)")
+    if clean.empty or len(frame_days) == 0:
+        fig, ax = plt.subplots(figsize=(9, 6), dpi=128)
+        ax.set_facecolor("#f7f3ea")
+        ax.set_title("Gaza ACLED Events (No Data)")
         ax.set_xlabel("latitude")
         ax.set_ylabel("longitude")
         frames.append(_frame_from_figure(fig))
         plt.close(fig)
-    else:
-        for frame_day in frame_days:
-            subset = _window_subset(clean, frame_day, tail_days=tail_days)
-            fig, ax = plt.subplots(figsize=(9, 5.6), dpi=130)
-            ax.set_facecolor("#f5f1e8")
-            ax.grid(alpha=0.18)
+        imageio.mimsave(output_path, frames, fps=fps)
+        return output_path
 
-            if not subset.empty:
-                ages = (frame_day - subset["event_day"]).dt.days.to_numpy(dtype=float)
-                fatalities = subset["fatalities"].to_numpy(dtype=float)
-                ax.scatter(
-                    subset["latitude_jitter"],
-                    subset["longitude_jitter"],
-                    s=_size_from_fatalities(subset["fatalities"]),
-                    c=_rgba_colors(ages=ages, fatalities=fatalities, tail_days=tail_days),
-                    linewidths=0,
-                )
+    x_min = float(clean["latitude_jitter"].min())
+    x_max = float(clean["latitude_jitter"].max())
+    y_min = float(clean["longitude_jitter"].min())
+    y_max = float(clean["longitude_jitter"].max())
+    x_margin = max((x_max - x_min) * 0.06, 0.02)
+    y_margin = max((y_max - y_min) * 0.06, 0.02)
 
-            ax.set_xlim(x_min - x_margin, x_max + x_margin)
-            ax.set_ylim(y_min - y_margin, y_max + y_margin)
-            ax.set_xlabel("latitude")
-            ax.set_ylabel("longitude")
-            title = frame_day.date().isoformat()
-            ax.set_title(
-                f"Gaza ACLED events through {title} (trailing {tail_days} days)",
-                fontsize=12,
+    daily_counts = (
+        clean.groupby("event_day", observed=True)
+        .size()
+        .reindex(
+            pd.date_range(clean["event_day"].min(), clean["event_day"].max(), freq="D"),
+            fill_value=0,
+        )
+    )
+
+    for frame_day in frame_days:
+        subset = _window_subset(clean, frame_day, tail_days=max(1, tail_days))
+
+        fig = plt.figure(figsize=(9, 6), dpi=128)
+        gs = fig.add_gridspec(nrows=2, ncols=1, height_ratios=[3.9, 1.35], hspace=0.12)
+        ax_map = fig.add_subplot(gs[0])
+        ax_ts = fig.add_subplot(gs[1])
+
+        ax_map.set_facecolor("#f7f3ea")
+        ax_map.grid(alpha=0.16)
+
+        ax_map.scatter(
+            clean["latitude_jitter"],
+            clean["longitude_jitter"],
+            s=7,
+            c="#c9d2dc",
+            alpha=0.16,
+            linewidths=0,
+            zorder=1,
+        )
+
+        if not subset.empty:
+            ages = (frame_day - subset["event_day"]).dt.days.to_numpy(dtype=float)
+            fatalities = subset["fatalities"].to_numpy(dtype=float)
+            ax_map.scatter(
+                subset["latitude_jitter"],
+                subset["longitude_jitter"],
+                s=_size_from_fatalities(subset["fatalities"]),
+                c=_rgba_colors(ages=ages, fatalities=fatalities, tail_days=max(1, tail_days)),
+                linewidths=0,
+                zorder=3,
             )
-            frames.append(_frame_from_figure(fig))
-            plt.close(fig)
+
+        ax_map.set_xlim(x_min - x_margin, x_max + x_margin)
+        ax_map.set_ylim(y_min - y_margin, y_max + y_margin)
+        ax_map.set_xlabel("latitude")
+        ax_map.set_ylabel("longitude")
+        ax_map.set_title(
+            f"Gaza ACLED conflict events through {frame_day.date().isoformat()}"
+            f" (trailing {tail_days} days)",
+            fontsize=12,
+            pad=9,
+        )
+
+        shown = len(subset)
+        cum = int((clean["event_day"] <= frame_day).sum())
+        ax_map.text(
+            0.012,
+            0.985,
+            f"shown={shown:,} | cumulative={cum:,} | total={len(clean):,}",
+            transform=ax_map.transAxes,
+            va="top",
+            ha="left",
+            fontsize=9,
+            color="#3f5468",
+        )
+
+        _plot_activity_context(
+            ax=ax_ts,
+            daily_counts=daily_counts,
+            frame_day=frame_day,
+            tail_days=tail_days,
+        )
+        fig.autofmt_xdate(rotation=0)
+
+        frames.append(_frame_from_figure(fig))
+        plt.close(fig)
 
     imageio.mimsave(output_path, frames, fps=fps)
     return output_path
@@ -140,28 +232,34 @@ def _widget_html(payload_json: str, frame_max: int, tail_default: int, tail_max:
 <title>Gaza ACLED Trailing Window Explorer</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
+:root {
+  --paper: #f8f4ec;
+  --ink: #23374f;
+  --accent: #264f7f;
+  --line: #d8cfbd;
+}
 body {
   margin: 0;
   font-family: 'Avenir Next', 'Segoe UI', sans-serif;
   background: #efe9dd;
-  color: #23374f;
+  color: var(--ink);
 }
 .wrap {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 16px 18px 24px;
+  padding: 14px 16px 22px;
 }
 .controls {
   display: grid;
   gap: 10px;
-  background: #f8f4ec;
-  border: 1px solid #d8cfbd;
+  background: var(--paper);
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 12px;
 }
 .row {
   display: grid;
-  grid-template-columns: 220px 1fr 100px;
+  grid-template-columns: 220px 1fr 120px;
   gap: 10px;
   align-items: center;
 }
@@ -173,11 +271,11 @@ body {
   color: #1d2f44;
 }
 #plot {
-  height: 680px;
+  height: 700px;
   margin-top: 12px;
-  border: 1px solid #d8cfbd;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: #f8f4ec;
+  background: var(--paper);
 }
 .meta {
   margin-top: 8px;
@@ -185,10 +283,11 @@ body {
   color: #42576f;
   display: flex;
   justify-content: space-between;
+  gap: 16px;
 }
 button {
   width: 100px;
-  background: #264f7f;
+  background: var(--accent);
   color: #fff;
   border: 0;
   border-radius: 6px;
@@ -196,6 +295,11 @@ button {
   cursor: pointer;
 }
 button:hover { background: #1d4068; }
+@media (max-width: 900px) {
+  .row { grid-template-columns: 1fr; }
+  .row output { text-align: left; }
+  #plot { height: 520px; }
+}
 </style>
 </head>
 <body>
@@ -212,6 +316,11 @@ button:hover { background: #1d4068; }
       <input id="tail" type="range" min="1" max="__TAIL_MAX__" step="1" value="__TAIL_DEFAULT__" />
       <output id="tailOut"></output>
     </div>
+    <div class="row">
+      <label for="speed">Playback Speed (fps)</label>
+      <input id="speed" type="range" min="2" max="30" step="1" value="10" />
+      <output id="speedOut"></output>
+    </div>
     <div class="row" style="grid-template-columns:220px auto 1fr;">
       <label>Playback</label>
       <button id="play" type="button">Play</button>
@@ -227,16 +336,14 @@ button:hover { background: #1d4068; }
 const data = __PAYLOAD_JSON__;
 const frameSlider = document.getElementById('frame');
 const tailSlider = document.getElementById('tail');
+const speedSlider = document.getElementById('speed');
 const frameOut = document.getElementById('frameOut');
 const tailOut = document.getElementById('tailOut');
+const speedOut = document.getElementById('speedOut');
 const dateLabel = document.getElementById('dateLabel');
 const countLabel = document.getElementById('countLabel');
 const playBtn = document.getElementById('play');
-let timer = null;
-
-function markerSize(f) {
-  return 7 + Math.min(26, Math.sqrt(Math.max(f, 0)) * 2.6);
-}
+let timerId = null;
 
 function updatePlot() {
   const frameIdx = Number(frameSlider.value);
@@ -248,20 +355,27 @@ function updatePlot() {
   const nonX = [], nonY = [], nonS = [], nonC = [];
 
   for (let d = startDay; d <= currentDay; d += 1) {
-    const dayEvents = data.grouped[d] || [];
+    const dayEvents = data.days[d];
+    if (!dayEvents) continue;
     const age = currentDay - d;
     const ageAlpha = Math.max(0.08, 1 - age / Math.max(tailDays, 1));
-    for (const ev of dayEvents) {
-      const lat = ev[0], lon = ev[1], fatalities = ev[2];
+
+    for (let i = 0; i < dayEvents.length; i += 1) {
+      const ev = dayEvents[i];
+      const lat = ev[0];
+      const lon = ev[1];
+      const fatalities = ev[2];
+      const size = ev[3];
+
       if (fatalities > 0) {
         fatalX.push(lat);
         fatalY.push(lon);
-        fatalS.push(markerSize(fatalities));
+        fatalS.push(size);
         fatalC.push(`rgba(228,87,68,${(ageAlpha * 0.9).toFixed(4)})`);
       } else {
         nonX.push(lat);
         nonY.push(lon);
-        nonS.push(markerSize(0));
+        nonS.push(Math.max(6, size * 0.75));
         nonC.push(`rgba(79,111,143,${(ageAlpha * 0.35).toFixed(4)})`);
       }
     }
@@ -289,7 +403,7 @@ function updatePlot() {
   ];
 
   const layout = {
-    margin: {l: 70, r: 20, t: 60, b: 70},
+    margin: {l: 70, r: 20, t: 58, b: 65},
     paper_bgcolor: '#f8f4ec',
     plot_bgcolor: '#f8f4ec',
     xaxis: {title: 'latitude', range: data.x_range, zeroline: false, gridcolor: '#dcd4c6'},
@@ -301,28 +415,47 @@ function updatePlot() {
   Plotly.react('plot', traces, layout, {responsive: true, displaylogo: false});
   frameOut.value = `${frameIdx + 1} / ${data.frame_labels.length}`;
   tailOut.value = `${tailDays} days`;
+  speedOut.value = `${Number(speedSlider.value)} fps`;
   dateLabel.textContent = `Frame date: ${data.frame_labels[frameIdx]}`;
   countLabel.textContent = `Points shown: ${fatalX.length + nonX.length}`;
 }
 
+function stopPlayback() {
+  if (timerId !== null) {
+    clearTimeout(timerId);
+    timerId = null;
+  }
+  playBtn.textContent = 'Play';
+}
+
+function playTick() {
+  if (timerId === null) return;
+  const next = Number(frameSlider.value) + 1;
+  frameSlider.value = next >= data.frame_labels.length ? '0' : String(next);
+  updatePlot();
+  const delayMs = Math.max(35, Math.round(1000 / Math.max(2, Number(speedSlider.value))));
+  timerId = setTimeout(playTick, delayMs);
+}
+
+function startPlayback() {
+  if (timerId !== null) return;
+  playBtn.textContent = 'Pause';
+  timerId = setTimeout(playTick, 10);
+}
+
 frameSlider.addEventListener('input', updatePlot);
 tailSlider.addEventListener('input', updatePlot);
+speedSlider.addEventListener('input', updatePlot);
 
 playBtn.addEventListener('click', () => {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-    playBtn.textContent = 'Play';
+  if (timerId !== null) {
+    stopPlayback();
     return;
   }
-  playBtn.textContent = 'Pause';
-  timer = setInterval(() => {
-    const next = Number(frameSlider.value) + 1;
-    frameSlider.value = next >= data.frame_labels.length ? '0' : String(next);
-    updatePlot();
-  }, 330);
+  startPlayback();
 });
 
+window.addEventListener('blur', stopPlayback);
 updatePlot();
 </script>
 </body>
@@ -339,12 +472,12 @@ def build_points_tail_widget(
     events: pd.DataFrame,
     output_path: Path,
     *,
-    by: str = "week",
+    by: str = "day",
     default_tail_days: int = 30,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    clean = add_deterministic_jitter(normalize_event_frame(events))
+    clean = add_deterministic_jitter(normalize_event_frame(events), scale=0.0034)
 
     if clean.empty:
         output_path.write_text(
@@ -354,15 +487,24 @@ def build_points_tail_widget(
         return output_path
 
     first_day = clean["event_day"].min()
+    max_day = clean["event_day"].max()
     frame_days = _build_frame_days(clean, by=by)
     frame_labels = [day.date().isoformat() for day in frame_days]
     frame_day_indices = [int((day - first_day).days) for day in frame_days]
 
-    grouped: dict[int, list[list[float]]] = {}
+    horizon_days = int((max_day - first_day).days + 1)
+    day_bins: list[list[list[float]]] = [[] for _ in range(horizon_days)]
+
     for row in clean.itertuples(index=False):
         day_idx = int((row.event_day - first_day).days)
-        grouped.setdefault(day_idx, []).append(
-            [float(row.latitude_jitter), float(row.longitude_jitter), float(row.fatalities)]
+        point_size = float(7.0 + min(26.0, np.sqrt(max(float(row.fatalities), 0.0)) * 2.6))
+        day_bins[day_idx].append(
+            [
+                float(row.latitude_jitter),
+                float(row.longitude_jitter),
+                float(row.fatalities),
+                point_size,
+            ]
         )
 
     x_min = float(clean["latitude_jitter"].min())
@@ -373,7 +515,7 @@ def build_points_tail_widget(
     y_margin = max((y_max - y_min) * 0.06, 0.02)
 
     payload = {
-        "grouped": grouped,
+        "days": day_bins,
         "frame_labels": frame_labels,
         "frame_day_indices": frame_day_indices,
         "x_range": [x_min - x_margin, x_max + x_margin],
@@ -383,7 +525,7 @@ def build_points_tail_widget(
     payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     frame_max = max(0, len(frame_labels) - 1)
     tail_default = max(1, int(default_tail_days))
-    tail_max = max(30, int((clean["event_day"].max() - first_day).days + 1))
+    tail_max = max(30, horizon_days)
 
     output_path.write_text(
         _widget_html(

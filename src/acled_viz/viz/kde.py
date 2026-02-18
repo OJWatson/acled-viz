@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-from acled_viz.spatial.geometry import gaza_bbox
 from acled_viz.viz.styling import apply_style
+from acled_viz.viz.transforms import normalize_event_frame
 
 
 def _frame_from_figure(fig: plt.Figure) -> np.ndarray:
@@ -21,27 +21,18 @@ def _frame_from_figure(fig: plt.Figure) -> np.ndarray:
 
 
 def _normalize_events(events: pd.DataFrame) -> pd.DataFrame:
-    frame = events.copy()
-    frame["event_date"] = pd.to_datetime(frame["event_date"], errors="coerce")
-    frame = frame.dropna(subset=["event_date", "latitude", "longitude"])
-    return frame.sort_values("event_date").reset_index(drop=True)
-
-
-def _heat_grid(frame: pd.DataFrame, bins: int = 30) -> np.ndarray:
-    hist, _, _ = np.histogram2d(frame["latitude"], frame["longitude"], bins=bins)
-    return hist
+    return normalize_event_frame(events)
 
 
 def _build_horizon_slices(events: pd.DataFrame, by: str) -> list[tuple[str, pd.DataFrame]]:
     if events.empty:
         return []
 
-    event_day = events["event_date"].dt.floor("D")
-    first_day = event_day.min()
-    last_day = event_day.max()
+    first_day = events["event_day"].min()
+    last_day = events["event_day"].max()
 
     if by == "week":
-        day_offsets = (event_day - first_day).dt.days
+        day_offsets = (events["event_day"] - first_day).dt.days
         week_index = (day_offsets // 7).astype(int)
         max_week = int(week_index.max())
         slices: list[tuple[str, pd.DataFrame]] = []
@@ -50,46 +41,148 @@ def _build_horizon_slices(events: pd.DataFrame, by: str) -> list[tuple[str, pd.D
         return slices
 
     days = pd.date_range(first_day, last_day, freq="D")
-    slices = []
-    for day in days:
-        slices.append((day.date().isoformat(), events[event_day == day]))
-    return slices
+    return [(day.date().isoformat(), events[events["event_day"] == day]) for day in days]
 
 
-def animate_kde(events: pd.DataFrame, output_path: Path, fps: int = 8, by: str = "week") -> Path:
+def _build_frame_days(events: pd.DataFrame, by: str) -> pd.DatetimeIndex:
+    if events.empty:
+        return pd.DatetimeIndex([])
+
+    first_day = events["event_day"].min()
+    last_day = events["event_day"].max()
+
+    if by == "week":
+        weekly = pd.date_range(first_day, last_day, freq="7D")
+        if len(weekly) == 0 or weekly[-1] != last_day:
+            weekly = weekly.append(pd.DatetimeIndex([last_day]))
+        return weekly
+
+    return pd.date_range(first_day, last_day, freq="D")
+
+
+def _window_subset(events: pd.DataFrame, frame_day: pd.Timestamp, tail_days: int) -> pd.DataFrame:
+    ages = (frame_day - events["event_day"]).dt.days
+    return events[(ages >= 0) & (ages < tail_days)].copy()
+
+
+def _gaussian_kernel1d(sigma: float = 1.1) -> np.ndarray:
+    radius = max(1, int(np.ceil(sigma * 3.0)))
+    x = np.arange(-radius, radius + 1, dtype=float)
+    kernel = np.exp(-(x**2) / (2.0 * sigma**2))
+    kernel /= kernel.sum()
+    return kernel
+
+
+def _smooth2d(values: np.ndarray, sigma: float = 1.1) -> np.ndarray:
+    kernel = _gaussian_kernel1d(sigma=sigma)
+    smoothed_x = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), 0, values)
+    smoothed = np.apply_along_axis(lambda m: np.convolve(m, kernel, mode="same"), 1, smoothed_x)
+    return smoothed
+
+
+def _density_surface(
+    frame: pd.DataFrame,
+    *,
+    lat_edges: np.ndarray,
+    lon_edges: np.ndarray,
+    sigma: float = 1.15,
+) -> np.ndarray:
+    hist, _, _ = np.histogram2d(frame["latitude"], frame["longitude"], bins=[lat_edges, lon_edges])
+    smooth = _smooth2d(hist, sigma=sigma)
+    return smooth.T
+
+
+def animate_kde(
+    events: pd.DataFrame,
+    output_path: Path,
+    fps: int = 8,
+    by: str = "week",
+    tail_days: int = 35,
+) -> Path:
     apply_style()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     clean = _normalize_events(events)
-    lon_min, lon_max, lat_min, lat_max = gaza_bbox()
     frames: list[np.ndarray] = []
 
-    slices = _build_horizon_slices(clean, by=by)
-    if not slices:
-        fig, ax = plt.subplots(figsize=(8, 4.8), dpi=120)
-        ax.set_xlim(lon_min, lon_max)
-        ax.set_ylim(lat_min, lat_max)
-        ax.set_title("Event Density (No Data)")
-        ax.set_xlabel("Longitude")
-        ax.set_ylabel("Latitude")
+    if clean.empty:
+        fig, ax = plt.subplots(figsize=(9, 6), dpi=128)
+        ax.set_title("Gaza Event Density (No Data)")
+        ax.set_xlabel("latitude")
+        ax.set_ylabel("longitude")
         frames.append(_frame_from_figure(fig))
         plt.close(fig)
-    else:
-        for label, subset in slices:
-            fig, ax = plt.subplots(figsize=(8, 4.8), dpi=120)
-            heat = _heat_grid(subset)
-            ax.imshow(
-                heat,
-                origin="lower",
-                extent=(lon_min, lon_max, lat_min, lat_max),
-                cmap="inferno",
-                aspect="auto",
+        imageio.mimsave(output_path, frames, fps=fps)
+        return output_path
+
+    lat_min = float(clean["latitude"].min())
+    lat_max = float(clean["latitude"].max())
+    lon_min = float(clean["longitude"].min())
+    lon_max = float(clean["longitude"].max())
+    lat_margin = max((lat_max - lat_min) * 0.06, 0.02)
+    lon_margin = max((lon_max - lon_min) * 0.06, 0.02)
+
+    lat_edges = np.linspace(lat_min - lat_margin, lat_max + lat_margin, 95)
+    lon_edges = np.linspace(lon_min - lon_margin, lon_max + lon_margin, 95)
+    frame_days = _build_frame_days(clean, by=by)
+
+    for frame_day in frame_days:
+        subset = _window_subset(clean, frame_day, tail_days=max(1, tail_days))
+        fig, ax = plt.subplots(figsize=(9, 6), dpi=128)
+        ax.set_facecolor("#f7f3ea")
+
+        if subset.empty:
+            surface = np.zeros((len(lon_edges) - 1, len(lat_edges) - 1), dtype=float)
+        else:
+            surface = _density_surface(subset, lat_edges=lat_edges, lon_edges=lon_edges)
+
+        vmax = max(float(surface.max()), 1e-6)
+        ax.imshow(
+            surface,
+            origin="lower",
+            extent=(lat_edges[0], lat_edges[-1], lon_edges[0], lon_edges[-1]),
+            cmap="magma",
+            aspect="auto",
+            vmin=0,
+            vmax=vmax,
+            alpha=0.92,
+            interpolation="bilinear",
+        )
+
+        if not subset.empty:
+            ax.scatter(
+                subset["latitude"],
+                subset["longitude"],
+                s=8,
+                c="#d7e0e8",
+                alpha=0.22,
+                linewidths=0,
             )
-            ax.set_title(f"Event Density {label}")
-            ax.set_xlabel("Longitude")
-            ax.set_ylabel("Latitude")
-            frames.append(_frame_from_figure(fig))
-            plt.close(fig)
+
+        ax.set_xlim(lat_edges[0], lat_edges[-1])
+        ax.set_ylim(lon_edges[0], lon_edges[-1])
+        ax.set_xlabel("latitude")
+        ax.set_ylabel("longitude")
+        ax.set_title(
+            f"Gaza event density through {frame_day.date().isoformat()} "
+            f"(trailing {tail_days} days)",
+            fontsize=12,
+            pad=8,
+        )
+        ax.grid(alpha=0.07)
+        ax.text(
+            0.012,
+            0.985,
+            f"events in window: {len(subset):,}",
+            transform=ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=9,
+            color="#f7f3ea",
+        )
+
+        frames.append(_frame_from_figure(fig))
+        plt.close(fig)
 
     imageio.mimsave(output_path, frames, fps=fps)
     return output_path

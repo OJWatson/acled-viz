@@ -26,13 +26,13 @@ def build_gallery_assets(*, fps: int = 8, by: str = "week", tail_days: int = 30)
     out = gallery_assets_dir()
 
     hero = animate_points(events, out / "hero_points.mp4", fps=fps, by=by, tail_days=tail_days)
-    kde = animate_kde(events, out / "kde_weekly.mp4", fps=fps, by=by)
+    kde = animate_kde(events, out / "kde_weekly.mp4", fps=fps, by=by, tail_days=tail_days)
     summary = plot_timeseries(events, out / "summary_counts.png")
     facets = plot_fatalities_facet_grid(events, out / "fatalities_facets.png")
     widget = build_points_tail_widget(
         events,
         out / "points_windowed.html",
-        by=by,
+        by="day",
         default_tail_days=tail_days,
     )
 

@@ -8,6 +8,11 @@
 - [x] Milestone `M3`: DuckDB forecast registry + demo motac ingestion.
 - [x] Milestone `M4`: forecast evaluation metrics + report visuals.
 - [x] Milestone `M5`: visual-first Sphinx site integration with gallery/forecasts/docs pages.
+- [x] Visual rework pass (2026-02-18):
+  - eliminate demo overwrite in docs CI
+  - rebuild gallery from full cached ACLED fixture horizon
+  - improve point/KDE/summary visual quality
+  - add full-horizon daily interactive widget with controllable point lifetime
 
 ## Next
 

@@ -1,6 +1,6 @@
 # acled-viz
 
-`acled-viz` is a demo-safe Gaza conflict visualisation + forecast tracking package.
+`acled-viz` is a Gaza conflict visualisation + forecast tracking package.
 
 Internal source package is `acled_viz`.
 
@@ -16,7 +16,7 @@ Internal source package is `acled_viz`.
 
 ```bash
 uv sync --extra dev --extra docs
-uv run acled-viz site build --mode demo
+uv run acled-viz site build --mode full --start 2023-09-04 --end 2026-02-18 --tail-days 45
 ```
 
 After build, open `docs/_build/html/index.html`.
@@ -31,5 +31,5 @@ acled-viz forecasts init-db
 acled-viz forecasts ingest-motac --mode demo
 acled-viz forecasts list-runs
 acled-viz forecasts build-report --run-id <id>
-acled-viz site build --mode demo
+acled-viz site build --mode full --start 2023-09-04 --end 2026-02-18 --tail-days 45
 ```
