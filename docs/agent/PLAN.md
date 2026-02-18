@@ -2,7 +2,7 @@
 
 ## Now
 
-- [ ] Milestone `M6.OSM`: finish OSM enrichment so all core visuals can optionally overlay
+- [x] Milestone `M6.OSM`: finish OSM enrichment so all core visuals can optionally overlay
   cached road networks and places of interest (POIs), with simple on/off controls.
 - [x] Milestone `M0.REALIGN`: package/docs/tooling scaffold with demo-safe docs build.
 - [x] Milestone `M1`: ACLED ingestion wrappers and cache/provenance.

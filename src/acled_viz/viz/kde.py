@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
+from acled_viz.spatial.osm import OSMOverlay
 from acled_viz.viz.styling import apply_style
 from acled_viz.viz.transforms import normalize_event_frame
 
@@ -92,12 +93,46 @@ def _density_surface(
     return smooth.T
 
 
+def _draw_osm_overlay(
+    *,
+    ax: plt.Axes,
+    overlay: OSMOverlay | None,
+    show_roads: bool,
+    show_poi: bool,
+) -> None:
+    if overlay is None:
+        return
+
+    if show_roads:
+        for line in overlay.roads:
+            if len(line) < 2:
+                continue
+            lat = [pt[0] for pt in line]
+            lon = [pt[1] for pt in line]
+            ax.plot(lat, lon, color="#dde5ee", linewidth=0.42, alpha=0.36, zorder=4)
+
+    if show_poi and not overlay.poi.empty:
+        ax.scatter(
+            overlay.poi["latitude"],
+            overlay.poi["longitude"],
+            s=10,
+            marker="^",
+            c="#8ac2ff",
+            alpha=0.5,
+            linewidths=0,
+            zorder=5,
+        )
+
+
 def animate_kde(
     events: pd.DataFrame,
     output_path: Path,
     fps: int = 8,
     by: str = "week",
     tail_days: int = 35,
+    overlay: OSMOverlay | None = None,
+    show_roads: bool = False,
+    show_poi: bool = False,
 ) -> Path:
     apply_style()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +142,7 @@ def animate_kde(
 
     if clean.empty:
         fig, ax = plt.subplots(figsize=(9, 6), dpi=128)
+        _draw_osm_overlay(ax=ax, overlay=overlay, show_roads=show_roads, show_poi=show_poi)
         ax.set_title("Gaza Event Density (No Data)")
         ax.set_xlabel("latitude")
         ax.set_ylabel("longitude")
@@ -159,13 +195,21 @@ def animate_kde(
                 linewidths=0,
             )
 
+        _draw_osm_overlay(ax=ax, overlay=overlay, show_roads=show_roads, show_poi=show_poi)
+
         ax.set_xlim(lat_edges[0], lat_edges[-1])
         ax.set_ylim(lon_edges[0], lon_edges[-1])
         ax.set_xlabel("latitude")
         ax.set_ylabel("longitude")
+        overlay_label = []
+        if show_roads and overlay is not None and overlay.roads:
+            overlay_label.append("roads")
+        if show_poi and overlay is not None and not overlay.poi.empty:
+            overlay_label.append("POI")
+        overlay_text = f" | overlays: {', '.join(overlay_label)}" if overlay_label else ""
         ax.set_title(
             f"Gaza event density through {frame_day.date().isoformat()} "
-            f"(trailing {tail_days} days)",
+            f"(trailing {tail_days} days){overlay_text}",
             fontsize=12,
             pad=8,
         )

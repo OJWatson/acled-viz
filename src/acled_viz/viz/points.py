@@ -11,6 +11,7 @@ import pandas as pd
 from matplotlib import dates as mdates
 from matplotlib import pyplot as plt
 
+from acled_viz.spatial.osm import OSMOverlay
 from acled_viz.viz.styling import apply_style
 from acled_viz.viz.transforms import add_deterministic_jitter, normalize_event_frame
 
@@ -110,12 +111,47 @@ def _plot_activity_context(
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
 
 
+def _draw_osm_overlay(
+    *,
+    ax: plt.Axes,
+    overlay: OSMOverlay | None,
+    show_roads: bool,
+    show_poi: bool,
+) -> None:
+    if overlay is None:
+        return
+
+    if show_roads:
+        for line in overlay.roads:
+            if len(line) < 2:
+                continue
+            lat = [pt[0] for pt in line]
+            lon = [pt[1] for pt in line]
+            ax.plot(lat, lon, color="#6f8ca8", linewidth=0.55, alpha=0.25, zorder=0)
+
+    if show_poi and not overlay.poi.empty:
+        ax.scatter(
+            overlay.poi["latitude"],
+            overlay.poi["longitude"],
+            s=18,
+            marker="^",
+            c="#1c4e80",
+            alpha=0.62,
+            linewidths=0.2,
+            edgecolors="#f3f0e8",
+            zorder=2,
+        )
+
+
 def animate_points(
     events: pd.DataFrame,
     output_path: Path,
     fps: int = 8,
     by: str = "week",
     tail_days: int = 30,
+    overlay: OSMOverlay | None = None,
+    show_roads: bool = False,
+    show_poi: bool = False,
 ) -> Path:
     apply_style()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,6 +163,7 @@ def animate_points(
     if clean.empty or len(frame_days) == 0:
         fig, ax = plt.subplots(figsize=(9, 6), dpi=128)
         ax.set_facecolor("#f7f3ea")
+        _draw_osm_overlay(ax=ax, overlay=overlay, show_roads=show_roads, show_poi=show_poi)
         ax.set_title("Gaza ACLED Events (No Data)")
         ax.set_xlabel("latitude")
         ax.set_ylabel("longitude")
@@ -161,6 +198,12 @@ def animate_points(
 
         ax_map.set_facecolor("#f7f3ea")
         ax_map.grid(alpha=0.16)
+        _draw_osm_overlay(
+            ax=ax_map,
+            overlay=overlay,
+            show_roads=show_roads,
+            show_poi=show_poi,
+        )
 
         ax_map.scatter(
             clean["latitude_jitter"],
@@ -188,9 +231,16 @@ def animate_points(
         ax_map.set_ylim(y_min - y_margin, y_max + y_margin)
         ax_map.set_xlabel("latitude")
         ax_map.set_ylabel("longitude")
+        overlay_label = []
+        if show_roads and overlay is not None and overlay.roads:
+            overlay_label.append("roads")
+        if show_poi and overlay is not None and not overlay.poi.empty:
+            overlay_label.append("POI")
+        overlay_text = f" | overlays: {', '.join(overlay_label)}" if overlay_label else ""
+
         ax_map.set_title(
             f"Gaza ACLED conflict events through {frame_day.date().isoformat()}"
-            f" (trailing {tail_days} days)",
+            f" (trailing {tail_days} days){overlay_text}",
             fontsize=12,
             pad=9,
         )
@@ -223,7 +273,14 @@ def animate_points(
     return output_path
 
 
-def _widget_html(payload_json: str, frame_max: int, tail_default: int, tail_max: int) -> str:
+def _widget_html(
+    payload_json: str,
+    frame_max: int,
+    tail_default: int,
+    tail_max: int,
+    roads_default: str,
+    poi_default: str,
+) -> str:
     html = """<!doctype html>
 <html lang="en">
 <head>
@@ -321,6 +378,18 @@ button:hover { background: #1d4068; }
       <input id="speed" type="range" min="2" max="30" step="1" value="10" />
       <output id="speedOut"></output>
     </div>
+    <div class="row">
+      <label>Base Layers</label>
+      <div style="display:flex;gap:16px;align-items:center;">
+        <label style="font-weight:500;">
+          <input id="roadsToggle" type="checkbox" __ROADS_DEFAULT__ /> Roads
+        </label>
+        <label style="font-weight:500;">
+          <input id="poiToggle" type="checkbox" __POI_DEFAULT__ /> POI
+        </label>
+      </div>
+      <output id="layerOut"></output>
+    </div>
     <div class="row" style="grid-template-columns:220px auto 1fr;">
       <label>Playback</label>
       <button id="play" type="button">Play</button>
@@ -340,6 +409,9 @@ const speedSlider = document.getElementById('speed');
 const frameOut = document.getElementById('frameOut');
 const tailOut = document.getElementById('tailOut');
 const speedOut = document.getElementById('speedOut');
+const roadsToggle = document.getElementById('roadsToggle');
+const poiToggle = document.getElementById('poiToggle');
+const layerOut = document.getElementById('layerOut');
 const dateLabel = document.getElementById('dateLabel');
 const countLabel = document.getElementById('countLabel');
 const playBtn = document.getElementById('play');
@@ -381,7 +453,34 @@ function updatePlot() {
     }
   }
 
-  const traces = [
+  const traces = [];
+
+  if (roadsToggle.checked && data.roads_x.length > 0) {
+    traces.push({
+      type: 'scattergl',
+      mode: 'lines',
+      name: 'roads',
+      x: data.roads_x,
+      y: data.roads_y,
+      line: {color: 'rgba(111,140,168,0.33)', width: 1},
+      hoverinfo: 'skip'
+    });
+  }
+
+  if (poiToggle.checked && data.poi_lat.length > 0) {
+    traces.push({
+      type: 'scattergl',
+      mode: 'markers',
+      name: 'POI',
+      x: data.poi_lat,
+      y: data.poi_lon,
+      marker: {size: 8, symbol: 'triangle-up', color: 'rgba(28,78,128,0.65)', line: {width: 0}},
+      text: data.poi_name,
+      hovertemplate: '%{text}<br>lat %{x:.4f}<br>lon %{y:.4f}<extra></extra>'
+    });
+  }
+
+  traces.push(
     {
       type: 'scattergl',
       mode: 'markers',
@@ -400,7 +499,7 @@ function updatePlot() {
       marker: { size: fatalS, color: fatalC, line: {width: 0} },
       hovertemplate: 'lat %{x:.4f}<br>lon %{y:.4f}<br>fatalities > 0<extra></extra>'
     }
-  ];
+  );
 
   const layout = {
     margin: {l: 70, r: 20, t: 58, b: 65},
@@ -416,6 +515,10 @@ function updatePlot() {
   frameOut.value = `${frameIdx + 1} / ${data.frame_labels.length}`;
   tailOut.value = `${tailDays} days`;
   speedOut.value = `${Number(speedSlider.value)} fps`;
+  const activeLayers = (
+    `${roadsToggle.checked ? 'roads ' : ''}${poiToggle.checked ? 'poi' : ''}`
+  ).trim();
+  layerOut.value = activeLayers || 'none';
   dateLabel.textContent = `Frame date: ${data.frame_labels[frameIdx]}`;
   countLabel.textContent = `Points shown: ${fatalX.length + nonX.length}`;
 }
@@ -446,6 +549,8 @@ function startPlayback() {
 frameSlider.addEventListener('input', updatePlot);
 tailSlider.addEventListener('input', updatePlot);
 speedSlider.addEventListener('input', updatePlot);
+roadsToggle.addEventListener('input', updatePlot);
+poiToggle.addEventListener('input', updatePlot);
 
 playBtn.addEventListener('click', () => {
   if (timerId !== null) {
@@ -465,6 +570,8 @@ updatePlot();
     html = html.replace("__FRAME_MAX__", str(frame_max))
     html = html.replace("__TAIL_DEFAULT__", str(tail_default))
     html = html.replace("__TAIL_MAX__", str(tail_max))
+    html = html.replace("__ROADS_DEFAULT__", roads_default)
+    html = html.replace("__POI_DEFAULT__", poi_default)
     return html
 
 
@@ -474,6 +581,9 @@ def build_points_tail_widget(
     *,
     by: str = "day",
     default_tail_days: int = 30,
+    overlay: OSMOverlay | None = None,
+    show_roads: bool = False,
+    show_poi: bool = False,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -520,7 +630,30 @@ def build_points_tail_widget(
         "frame_day_indices": frame_day_indices,
         "x_range": [x_min - x_margin, x_max + x_margin],
         "y_range": [y_min - y_margin, y_max + y_margin],
+        "roads_x": [],
+        "roads_y": [],
+        "poi_lat": [],
+        "poi_lon": [],
+        "poi_name": [],
     }
+
+    if overlay is not None and show_roads and overlay.roads:
+        roads_x: list[float | None] = []
+        roads_y: list[float | None] = []
+        for line in overlay.roads:
+            if len(line) < 2:
+                continue
+            roads_x.extend([pt[0] for pt in line])
+            roads_y.extend([pt[1] for pt in line])
+            roads_x.append(None)
+            roads_y.append(None)
+        payload["roads_x"] = roads_x
+        payload["roads_y"] = roads_y
+
+    if overlay is not None and show_poi and not overlay.poi.empty:
+        payload["poi_lat"] = overlay.poi["latitude"].round(6).tolist()
+        payload["poi_lon"] = overlay.poi["longitude"].round(6).tolist()
+        payload["poi_name"] = overlay.poi["name"].astype(str).tolist()
 
     payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
     frame_max = max(0, len(frame_labels) - 1)
@@ -533,6 +666,14 @@ def build_points_tail_widget(
             frame_max=frame_max,
             tail_default=tail_default,
             tail_max=tail_max,
+            roads_default=(
+                "checked" if show_roads and overlay is not None and overlay.roads else ""
+            ),
+            poi_default=(
+                "checked"
+                if show_poi and overlay is not None and not overlay.poi.empty
+                else ""
+            ),
         )
         + "\n",
         encoding="utf-8",

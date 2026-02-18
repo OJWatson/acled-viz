@@ -155,9 +155,17 @@ def build_site(
     start: date | None = None,
     end: date | None = None,
     tail_days: int = 30,
+    show_roads: bool = False,
+    show_poi: bool = False,
+    osm_refresh: bool = False,
 ) -> SiteBuildResult:
     ensure_event_cache(mode=mode, start=start, end=end)
-    build_gallery_assets(tail_days=tail_days)
+    build_gallery_assets(
+        tail_days=tail_days,
+        show_roads=show_roads,
+        show_poi=show_poi,
+        osm_refresh=osm_refresh,
+    )
 
     registry = init_registry(forecasts_dir())
     runs = list_runs(registry.db_path)

@@ -20,8 +20,11 @@ def test_site_build_demo(monkeypatch, tmp_path) -> None:
         start=None,
         end=None,
         tail_days: int = 30,
+        show_roads: bool = False,
+        show_poi: bool = False,
+        osm_refresh: bool = False,
     ) -> SiteBuildResult:
-        _ = (mode, start, end, tail_days)
+        _ = (mode, start, end, tail_days, show_roads, show_poi, osm_refresh)
         return SiteBuildResult(docs_index=Path(tmp_path) / "index.html", run_id="demo_test")
 
     monkeypatch.setattr("acled_viz.cli.build_site", _fake_build_site)

@@ -6,6 +6,7 @@ import pandas as pd
 
 from acled_viz.data.demo import demo_events
 from acled_viz.site.assets import build_gallery_assets
+from acled_viz.spatial.osm import OSMOverlay
 from acled_viz.viz.kde import _build_horizon_slices
 from acled_viz.viz.kde import _normalize_events as normalize_kde_events
 from acled_viz.viz.points import _build_frame_days, _window_subset
@@ -16,9 +17,16 @@ from acled_viz.viz.transforms import normalize_event_frame as normalize_point_ev
 
 def test_build_gallery_demo_outputs_files(tmp_path, monkeypatch) -> None:
     frame = demo_events(start=date(2023, 10, 1), end=date(2023, 10, 14))
+    overlay = OSMOverlay(
+        roads=[[[31.28, 34.25], [31.55, 34.50]]],
+        poi=pd.DataFrame(
+            [{"latitude": 31.45, "longitude": 34.39, "name": "Hospital", "category": "hospital"}]
+        ),
+    )
     monkeypatch.setattr("acled_viz.site.assets.load_cached_events", lambda: frame)
     monkeypatch.setattr("acled_viz.site.assets.gallery_assets_dir", lambda: tmp_path)
-    assets = build_gallery_assets(fps=6, by="week")
+    monkeypatch.setattr("acled_viz.site.assets.get_overlay", lambda **kwargs: overlay)
+    assets = build_gallery_assets(fps=6, by="week", show_roads=True, show_poi=True)
 
     assert assets.hero_points_mp4.exists()
     assert assets.kde_weekly_mp4.exists()
@@ -31,6 +39,9 @@ def test_build_gallery_demo_outputs_files(tmp_path, monkeypatch) -> None:
     assert assets.summary_counts_png.stat().st_size > 1000
     assert assets.fatalities_facets_png.stat().st_size > 1000
     assert assets.points_windowed_html.stat().st_size > 1000
+    widget_html = assets.points_windowed_html.read_text(encoding="utf-8")
+    assert "roadsToggle" in widget_html
+    assert "poiToggle" in widget_html
 
 
 def test_demo_events_respects_requested_date_range() -> None:

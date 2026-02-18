@@ -27,6 +27,7 @@ After build, open `docs/_build/html/index.html`.
 acled-viz data fetch-acled --region gaza --start 2023-10-01 --end 2023-10-14 --mode demo
 acled-viz viz build-gallery --mode demo --tail-days 30
 acled-viz viz build-gallery --mode full --by week --tail-days 45
+acled-viz viz build-gallery --mode full --show-roads --show-poi --tail-days 45
 acled-viz forecasts init-db
 acled-viz forecasts ingest-motac --mode demo
 acled-viz forecasts list-runs

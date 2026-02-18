@@ -71,6 +71,9 @@ def viz_build_gallery(
     fps: int = typer.Option(8, help="Frames per second"),
     by: str = typer.Option("week", help="day or week aggregation"),
     tail_days: int = typer.Option(30, help="Point lifetime in days for point animation"),
+    show_roads: bool = typer.Option(False, help="Overlay OSM road network when available"),
+    show_poi: bool = typer.Option(False, help="Overlay OSM places of interest when available"),
+    osm_refresh: bool = typer.Option(False, help="Refresh OSM cache from network"),
     start: str | None = typer.Option(None, help="Optional start YYYY-MM-DD"),
     end: str | None = typer.Option(None, help="Optional end YYYY-MM-DD"),
 ) -> None:
@@ -88,7 +91,14 @@ def viz_build_gallery(
     else:
         ensure_event_cache(mode=mode)
 
-    assets = build_gallery_assets(fps=fps, by=by, tail_days=tail_days)
+    assets = build_gallery_assets(
+        fps=fps,
+        by=by,
+        tail_days=tail_days,
+        show_roads=show_roads,
+        show_poi=show_poi,
+        osm_refresh=osm_refresh,
+    )
     typer.echo(f"Wrote {assets.hero_points_mp4}")
     typer.echo(f"Wrote {assets.kde_weekly_mp4}")
     typer.echo(f"Wrote {assets.summary_counts_png}")
@@ -148,6 +158,9 @@ def site_build(
     start: str | None = typer.Option(None, help="Optional start YYYY-MM-DD"),
     end: str | None = typer.Option(None, help="Optional end YYYY-MM-DD"),
     tail_days: int = typer.Option(30, help="Point lifetime in days for point animation"),
+    show_roads: bool = typer.Option(False, help="Overlay OSM road network when available"),
+    show_poi: bool = typer.Option(False, help="Overlay OSM places of interest when available"),
+    osm_refresh: bool = typer.Option(False, help="Refresh OSM cache from network"),
 ) -> None:
     """Build full site end-to-end. Example: acled-viz site build --mode demo"""
     if (start is None) != (end is None):
@@ -162,7 +175,15 @@ def site_build(
         except ValueError as exc:
             raise typer.BadParameter("start/end must be YYYY-MM-DD") from exc
 
-    result = build_site(mode=mode, start=start_date, end=end_date, tail_days=tail_days)
+    result = build_site(
+        mode=mode,
+        start=start_date,
+        end=end_date,
+        tail_days=tail_days,
+        show_roads=show_roads,
+        show_poi=show_poi,
+        osm_refresh=osm_refresh,
+    )
     typer.echo(json.dumps({"run_id": result.run_id, "index": str(result.docs_index)}))
 
 

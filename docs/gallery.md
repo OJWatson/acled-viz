@@ -6,6 +6,7 @@
 
 Points fade out after a configurable trailing window (`--tail-days`), so motion reflects recent conflict activity rather than only cumulative buildup.
 Marker size scales with fatalities and color separates `fatalities > 0` from zero-fatality events.
+Optional OSM overlays (roads/POI) can be enabled via CLI flags.
 
 ```{raw} html
 <video controls muted loop playsinline width="100%">
@@ -39,7 +40,14 @@ with point size scaling by fatalities and color separating `fatalities > 0`.
 ## Interactive Trailing Window Explorer
 
 Use sliders for frame, point lifetime, and playback speed. This widget runs on daily frames across the full cached horizon.
+When overlays are enabled, the widget includes layer toggles for roads and POI.
 
 ```{raw} html
 <iframe src="_static/gallery/points_windowed.html" style="width:100%;height:860px;border:0;border-radius:10px;"></iframe>
+```
+
+## Overlay Build Example
+
+```bash
+acled-viz viz build-gallery --mode full --by week --tail-days 45 --show-roads --show-poi
 ```

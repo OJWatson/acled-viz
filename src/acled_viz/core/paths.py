@@ -24,6 +24,12 @@ def forecasts_dir(base: Path | None = None) -> Path:
     return path
 
 
+def osm_dir(region: str = "gaza", base: Path | None = None) -> Path:
+    path = data_root(base=base) / "osm" / region
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def gallery_assets_dir() -> Path:
     path = Path("docs") / "_static" / "gallery"
     path.mkdir(parents=True, exist_ok=True)
