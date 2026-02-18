@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Build outputs
+docs/_build/
+build/
+dist/
+
+# Local data and caches (do not commit raw ACLED/cache outputs)
+data/
+*.duckdb

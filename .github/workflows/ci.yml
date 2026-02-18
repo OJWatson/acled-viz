@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Lint
+        run: uv run --extra dev ruff check .
+      - name: Test
+        run: uv run --extra dev pytest -q
+      - name: Guard raw ACLED data
+        run: |
+          if git ls-files | rg '^data/acled/'; then
+            echo "Raw ACLED cache paths should not be tracked" >&2
+            exit 1
+          fi
