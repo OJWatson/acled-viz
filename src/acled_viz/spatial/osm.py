@@ -87,7 +87,7 @@ def _geometry_points(geom: Any) -> list[tuple[float, float]]:
 
     geom_type = getattr(geom, "geom_type", "")
 
-    if hasattr(geom, "coords"):
+    if geom_type in {"LineString", "LinearRing"} and hasattr(geom, "coords"):
         return [(float(y), float(x)) for x, y in geom.coords]
 
     if geom_type.startswith("Multi") and hasattr(geom, "geoms"):
@@ -122,46 +122,54 @@ def _fetch_roads_osmnx(
     lon_max: float,
 ) -> list[list[list[float]]]:
     import osmnx as ox  # type: ignore
-    bbox = (lat_max, lat_min, lon_max, lon_min)
 
+    old_max_area = ox.settings.max_query_area_size
+    old_timeout = ox.settings.requests_timeout
+    ox.settings.max_query_area_size = max(float(old_max_area), 2_000_000_000.0)
+    ox.settings.requests_timeout = max(int(old_timeout), 180)
+    bbox = (lon_min, lat_min, lon_max, lat_max)
     try:
-        graph = ox.graph_from_bbox(
-            north=lat_max,
-            south=lat_min,
-            east=lon_max,
-            west=lon_min,
-            network_type="drive",
-            simplify=True,
-        )
-    except TypeError:
         try:
-            graph = ox.graph_from_bbox(bbox, network_type="drive", simplify=True)
+            graph = ox.graph_from_bbox(
+                north=lat_max,
+                south=lat_min,
+                east=lon_max,
+                west=lon_min,
+                network_type="drive",
+                simplify=True,
+            )
         except TypeError:
-            graph = ox.graph_from_bbox(bbox, network_type="drive")
+            try:
+                graph = ox.graph_from_bbox(bbox, network_type="drive", simplify=True)
+            except TypeError:
+                graph = ox.graph_from_bbox(bbox, network_type="drive")
 
-    edges = ox.graph_to_gdfs(graph, nodes=False, edges=True, fill_edge_geometry=True)
+        edges = ox.graph_to_gdfs(graph, nodes=False, edges=True, fill_edge_geometry=True)
 
-    roads: list[list[list[float]]] = []
-    for geom in edges.get("geometry", []):
-        points = _geometry_points(geom)
-        if len(points) < 2:
-            continue
+        roads: list[list[list[float]]] = []
+        for geom in edges.get("geometry", []):
+            points = _geometry_points(geom)
+            if len(points) < 2:
+                continue
 
-        line = [[lat, lon] for lat, lon in points]
-        line = _clip_line_to_bbox(
-            line,
-            lat_min=lat_min,
-            lat_max=lat_max,
-            lon_min=lon_min,
-            lon_max=lon_max,
-        )
-        if len(line) < 2:
-            continue
-        roads.append(_resample_line(line, max_points=36))
+            line = [[lat, lon] for lat, lon in points]
+            line = _clip_line_to_bbox(
+                line,
+                lat_min=lat_min,
+                lat_max=lat_max,
+                lon_min=lon_min,
+                lon_max=lon_max,
+            )
+            if len(line) < 2:
+                continue
+            roads.append(_resample_line(line, max_points=36))
 
-    if len(roads) > 700:
-        roads = roads[:700]
-    return roads
+        if len(roads) > 700:
+            roads = roads[:700]
+        return roads
+    finally:
+        ox.settings.max_query_area_size = old_max_area
+        ox.settings.requests_timeout = old_timeout
 
 
 def _fetch_poi_osmnx(
@@ -172,7 +180,12 @@ def _fetch_poi_osmnx(
     lon_max: float,
 ) -> pd.DataFrame:
     import osmnx as ox  # type: ignore
-    bbox = (lat_max, lat_min, lon_max, lon_min)
+
+    old_max_area = ox.settings.max_query_area_size
+    old_timeout = ox.settings.requests_timeout
+    ox.settings.max_query_area_size = max(float(old_max_area), 2_000_000_000.0)
+    ox.settings.requests_timeout = max(int(old_timeout), 180)
+    bbox = (lon_min, lat_min, lon_max, lat_max)
 
     tags = {
         "amenity": True,
@@ -183,63 +196,73 @@ def _fetch_poi_osmnx(
     }
 
     try:
-        features = ox.features_from_bbox(
-            north=lat_max,
-            south=lat_min,
-            east=lon_max,
-            west=lon_min,
-            tags=tags,
-        )
-    except Exception:
         try:
-            features = ox.features_from_bbox(bbox, tags=tags)
+            features = ox.features_from_bbox(
+                north=lat_max,
+                south=lat_min,
+                east=lon_max,
+                west=lon_min,
+                tags=tags,
+            )
         except Exception:
             try:
-                features = ox.geometries_from_bbox(lat_max, lat_min, lon_max, lon_min, tags=tags)
+                features = ox.features_from_bbox(bbox, tags=tags)
             except Exception:
-                return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
+                try:
+                    features = ox.geometries_from_bbox(
+                        lat_max,
+                        lat_min,
+                        lon_max,
+                        lon_min,
+                        tags=tags,
+                    )
+                except Exception:
+                    return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
 
-    rows: list[dict[str, Any]] = []
-    for record in features.reset_index(drop=True).to_dict(orient="records"):
-        points = _geometry_points(record.get("geometry"))
-        if not points:
-            continue
-        lat, lon = points[0]
-        if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
-            continue
+        rows: list[dict[str, Any]] = []
+        for record in features.reset_index(drop=True).to_dict(orient="records"):
+            points = _geometry_points(record.get("geometry"))
+            if not points:
+                continue
+            lat, lon = points[0]
+            if not (lat_min <= lat <= lat_max and lon_min <= lon <= lon_max):
+                continue
 
-        category = None
-        for key in ("amenity", "healthcare", "shop", "tourism", "public_transport"):
-            value = record.get(key)
-            if value is not None and str(value).strip() and str(value).lower() != "nan":
-                category = str(value)
-                break
+            category = None
+            for key in ("amenity", "healthcare", "shop", "tourism", "public_transport"):
+                value = record.get(key)
+                if value is not None and str(value).strip() and str(value).lower() != "nan":
+                    category = str(value)
+                    break
 
-        name = record.get("name")
-        if name is None or not str(name).strip() or str(name).lower() == "nan":
-            name = category or "POI"
+            name = record.get("name")
+            if name is None or not str(name).strip() or str(name).lower() == "nan":
+                name = category or "POI"
 
-        rows.append(
-            {
-                "latitude": float(lat),
-                "longitude": float(lon),
-                "name": str(name),
-                "category": str(category or "unknown"),
-            }
+            rows.append(
+                {
+                    "latitude": float(lat),
+                    "longitude": float(lon),
+                    "name": str(name),
+                    "category": str(category or "unknown"),
+                }
+            )
+
+        if not rows:
+            return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
+
+        poi = pd.DataFrame.from_records(rows)
+        poi["lat_round"] = poi["latitude"].round(5)
+        poi["lon_round"] = poi["longitude"].round(5)
+        poi = poi.drop_duplicates(subset=["lat_round", "lon_round", "name"]).drop(
+            columns=["lat_round", "lon_round"]
         )
-
-    if not rows:
-        return pd.DataFrame(columns=["latitude", "longitude", "name", "category"])
-
-    poi = pd.DataFrame.from_records(rows)
-    poi["lat_round"] = poi["latitude"].round(5)
-    poi["lon_round"] = poi["longitude"].round(5)
-    poi = poi.drop_duplicates(subset=["lat_round", "lon_round", "name"]).drop(
-        columns=["lat_round", "lon_round"]
-    )
-    if len(poi) > 500:
-        poi = poi.head(500)
-    return poi.reset_index(drop=True)
+        if len(poi) > 500:
+            poi = poi.head(500)
+        return poi.reset_index(drop=True)
+    finally:
+        ox.settings.max_query_area_size = old_max_area
+        ox.settings.requests_timeout = old_timeout
 
 
 def _fetch_overlay_osmnx(
