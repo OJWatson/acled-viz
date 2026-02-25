@@ -20,6 +20,7 @@ jobs:
         run: uv run --extra dev pytest -q
       - name: Full-mode ACLED smoke test (optional)
         if: env.ACLED_EMAIL != '' && env.ACLED_PASSWORD != ''
+        continue-on-error: true
         run: |
           uv run acled-viz data fetch-acled --region gaza --start 2023-10-01 --end 2023-10-02 --mode full
           test -f data/acled/gaza/events.parquet
