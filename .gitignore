@@ -12,7 +12,15 @@ dist/
 
 # Local data and caches (do not commit raw ACLED/cache outputs)
 /data/
+/acled_example.csv
+acled_example*.csv
 *.duckdb
+
+# Local ACLED credentials (never commit)
+acledcred
+acledcreds
+*acled*cred*
+*.secrets
 
 # Keep only a stable forecast demo folder for docs
 docs/_static/forecasts/demo_*

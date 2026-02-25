@@ -8,6 +8,9 @@ on:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    env:
+      ACLED_EMAIL: ${{ secrets.ACLED_EMAIL }}
+      ACLED_PASSWORD: ${{ secrets.ACLED_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -15,9 +18,23 @@ jobs:
         run: uv run --extra dev ruff check .
       - name: Test
         run: uv run --extra dev pytest -q
+      - name: Full-mode ACLED smoke test (optional)
+        if: env.ACLED_EMAIL != '' && env.ACLED_PASSWORD != ''
+        run: |
+          uv run acled-viz data fetch-acled --region gaza --start 2023-10-01 --end 2023-10-02 --mode full
+          test -f data/acled/gaza/events.parquet
+          test -f data/acled/gaza/meta.json
       - name: Guard raw ACLED data
         run: |
           if git ls-files | rg '^data/acled/'; then
             echo "Raw ACLED cache paths should not be tracked" >&2
+            exit 1
+          fi
+          if git ls-files | rg '^acled_example.*\.csv$'; then
+            echo "ACLED example snapshots should not be tracked" >&2
+            exit 1
+          fi
+          if git ls-files | rg 'acled.*cred|\.secrets$'; then
+            echo "Credential-like files should not be tracked" >&2
             exit 1
           fi

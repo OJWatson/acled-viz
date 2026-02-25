@@ -1,15 +1,18 @@
-"""ACLED ingestion wrappers with demo and optional trace integration."""
+"""ACLED ingestion wrappers with demo and lightweight ACLED API integration."""
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
+import json
 import os
+import time
 import warnings
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import pandas as pd
 
@@ -28,6 +31,19 @@ REQUIRED_COLUMNS = [
     "fatalities",
     "source",
 ]
+
+ACLED_TOKEN_URL = "https://acleddata.com/oauth/token"
+ACLED_EVENTS_URL = "https://acleddata.com/api/acled/read"
+ACLED_FIELDS = (
+    "event_id_cnty|event_date|latitude|longitude|event_type|sub_event_type|"
+    "fatalities|source|country|admin1"
+)
+ACLED_TOKEN_REFRESH_BUFFER_SECONDS = 30
+_ACLED_TOKEN_CACHE: dict[str, Any] = {
+    "email": None,
+    "access_token": None,
+    "expires_at": 0.0,
+}
 
 
 @dataclass(frozen=True)
@@ -78,49 +94,9 @@ def _canonicalize_events(frame: pd.DataFrame, start: date) -> pd.DataFrame:
     return normalized
 
 
-def _fetch_with_trace(start: date, end: date) -> pd.DataFrame:
-    fetch_acled_data = None
-    try:
-        trace_data_module = importlib.import_module("trace.data")
-        fetch_acled_data = getattr(trace_data_module, "fetch_acled_data", None)
-    except Exception:  # pragma: no cover - optional dependency path
-        fetch_acled_data = None
-
-    if not callable(fetch_acled_data):
-        local_trace_data = (
-            Path(__file__).resolve().parents[4] / "trace" / "src" / "trace" / "data.py"
-        )
-        if local_trace_data.exists():
-            spec = importlib.util.spec_from_file_location("trace_data_local", local_trace_data)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                fetch_acled_data = getattr(module, "fetch_acled_data", None)
-
-    if not callable(fetch_acled_data):
-        raise RuntimeError(
-            "trace dependency is unavailable; use --mode demo or install trace/motac deps"
-        )
-
-    api_token = os.getenv("ACLED_API_KEY") or os.getenv("ACLED_API_TOKEN")
-    api_email = os.getenv("ACLED_EMAIL")
-
-    if api_token and api_email:
-        try:
-            result = fetch_acled_data(
-                country="Palestine",
-                start_date=start.isoformat(),
-                end_date=end.isoformat(),
-                api_token=api_token,
-                api_email=api_email,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Trace ACLED fetch failed: {exc}") from exc
-        if not isinstance(result, pd.DataFrame):
-            raise RuntimeError("trace fetch_acled_data did not return a DataFrame")
-        return result
-
+def _load_snapshot_if_available() -> pd.DataFrame | None:
     local_snapshot_candidates = [
+        Path(__file__).resolve().parents[3] / "acled_example.csv",
         Path(__file__).resolve().parents[4]
         / "trace"
         / "src"
@@ -138,10 +114,7 @@ def _fetch_with_trace(start: date, end: date) -> pd.DataFrame:
     for snapshot in local_snapshot_candidates:
         if snapshot.exists():
             warnings.warn(
-                (
-                    f"Using local ACLED snapshot at {snapshot} because "
-                    "ACLED_API_KEY/ACLED_EMAIL are not set."
-                ),
+                f"Using local ACLED snapshot at {snapshot}.",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -149,10 +122,178 @@ def _fetch_with_trace(start: date, end: date) -> pd.DataFrame:
             if "event_date" in result.columns:
                 result["event_date"] = pd.to_datetime(result["event_date"], errors="coerce")
             return result
+    return None
+
+
+def _read_credentials_file(path: Path) -> tuple[str | None, str | None]:
+    if not path.exists() or not path.is_file():
+        return None, None
+
+    if path.suffix.lower() == ".json":
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None, None
+        email = data.get("email") or data.get("username")
+        password = data.get("password")
+        return email, password
+
+    try:
+        lines = [
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except OSError:
+        return None, None
+    if len(lines) < 2:
+        return None, None
+    return lines[0], lines[1]
+
+
+def _resolve_acled_credentials() -> tuple[str, str]:
+    email = os.getenv("ACLED_EMAIL")
+    password = os.getenv("ACLED_PASSWORD")
+    if email and password:
+        return email, password
+
+    candidate_paths: list[Path] = []
+    if os.getenv("ACLED_CREDENTIALS_FILE"):
+        candidate_paths.append(Path(os.environ["ACLED_CREDENTIALS_FILE"]).expanduser())
+    candidate_paths.extend(
+        [
+            Path.home() / ".config" / "acled" / "oauth_credentials.json",
+            Path.home() / "Downloads" / "acledcred",
+            Path.home() / "Downloads" / "acledcreds",
+        ]
+    )
+    for candidate in candidate_paths:
+        found_email, found_password = _read_credentials_file(candidate)
+        if found_email and found_password:
+            return found_email, found_password
 
     raise RuntimeError(
-        "Full mode requires ACLED credentials (ACLED_API_KEY and ACLED_EMAIL) "
-        "or a local ACLED snapshot from motac fixtures."
+        "ACLED credentials are required for full mode. Set ACLED_EMAIL and ACLED_PASSWORD, "
+        "or point ACLED_CREDENTIALS_FILE to a file containing email/password."
+    )
+
+
+def _request_json(
+    *,
+    url: str,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    data: dict[str, str] | None = None,
+    timeout: int = 30,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    payload: bytes | None = None
+    request_headers = headers.copy() if headers else {}
+    if data is not None:
+        payload = urlencode(data).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+
+    request = Request(url, data=payload, headers=request_headers, method=method)
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+    except (HTTPError, URLError) as exc:
+        raise RuntimeError(f"ACLED request failed: {exc}") from exc
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("ACLED response was not valid JSON") from exc
+
+
+def _get_access_token(email: str, password: str) -> str:
+    cached_email = _ACLED_TOKEN_CACHE.get("email")
+    cached_token = _ACLED_TOKEN_CACHE.get("access_token")
+    cached_expiry = float(_ACLED_TOKEN_CACHE.get("expires_at") or 0.0)
+    now = time.time()
+    if (
+        cached_email == email
+        and isinstance(cached_token, str)
+        and cached_token
+        and now < cached_expiry - ACLED_TOKEN_REFRESH_BUFFER_SECONDS
+    ):
+        return cached_token
+
+    token_payload = _request_json(
+        url=ACLED_TOKEN_URL,
+        method="POST",
+        data={
+            "username": email,
+            "password": password,
+            "grant_type": "password",
+            "client_id": "acled",
+        },
+    )
+    if not isinstance(token_payload, dict) or "access_token" not in token_payload:
+        raise RuntimeError("Failed to get ACLED OAuth token")
+
+    access_token = str(token_payload["access_token"])
+    expires_in_raw = token_payload.get("expires_in", 300)
+    try:
+        expires_in = int(expires_in_raw)
+    except (TypeError, ValueError):
+        expires_in = 300
+
+    _ACLED_TOKEN_CACHE["email"] = email
+    _ACLED_TOKEN_CACHE["access_token"] = access_token
+    _ACLED_TOKEN_CACHE["expires_at"] = now + max(expires_in, 1)
+    return access_token
+
+
+def _fetch_with_acled_api(start: date, end: date) -> pd.DataFrame:
+    email, password = _resolve_acled_credentials()
+    access_token = _get_access_token(email=email, password=password)
+
+    query = urlencode(
+        {
+            "_format": "json",
+            "country": "Palestine",
+            "event_date": f"{start.isoformat()}|{end.isoformat()}",
+            "event_date_where": "BETWEEN",
+            "fields": ACLED_FIELDS,
+            "limit": "50000",
+        }
+    )
+    payload = _request_json(
+        url=f"{ACLED_EVENTS_URL}?{query}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+    )
+
+    if isinstance(payload, dict):
+        if str(payload.get("status")) not in {"200", "None"}:
+            raise RuntimeError(f"ACLED API returned status={payload.get('status')}")
+        records = payload.get("data", [])
+    elif isinstance(payload, list):
+        records = payload
+    else:
+        records = []
+
+    if not isinstance(records, list):
+        raise RuntimeError("ACLED API returned an unexpected payload shape")
+    return pd.DataFrame(records)
+
+
+def _fetch_full_events(start: date, end: date) -> pd.DataFrame:
+    try:
+        return _fetch_with_acled_api(start=start, end=end)
+    except RuntimeError as exc:
+        if "credentials" not in str(exc).lower():
+            raise
+
+    snapshot = _load_snapshot_if_available()
+    if snapshot is not None:
+        return snapshot
+
+    raise RuntimeError(
+        "Full mode requires ACLED credentials (ACLED_EMAIL and ACLED_PASSWORD) "
+        "or an available local ACLED snapshot."
     )
 
 
@@ -173,7 +314,7 @@ def fetch_gaza_events(
     if mode == "demo":
         raw = demo_events(start=start, end=end)
     elif mode == "full":
-        raw = _fetch_with_trace(start=start, end=end)
+        raw = _fetch_full_events(start=start, end=end)
     else:
         raise ValueError("mode must be 'demo' or 'full'")
 
