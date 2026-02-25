@@ -15,8 +15,6 @@
 1. `ACLED_EMAIL` + `ACLED_PASSWORD`
 2. `ACLED_CREDENTIALS_FILE`
 3. `~/.config/acled/oauth_credentials.json`
-4. `~/Downloads/acledcred`
-5. `~/Downloads/acledcreds`
 
 ## Quick usage
 

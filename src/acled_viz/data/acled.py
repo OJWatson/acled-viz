@@ -163,8 +163,6 @@ def _resolve_acled_credentials() -> tuple[str, str]:
     candidate_paths.extend(
         [
             Path.home() / ".config" / "acled" / "oauth_credentials.json",
-            Path.home() / "Downloads" / "acledcred",
-            Path.home() / "Downloads" / "acledcreds",
         ]
     )
     for candidate in candidate_paths:

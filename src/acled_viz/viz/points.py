@@ -308,6 +308,7 @@ body {
 }
 .controls {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   background: var(--paper);
   border: 1px solid var(--line);
@@ -319,7 +320,9 @@ body {
   grid-template-columns: 220px 1fr 120px;
   gap: 10px;
   align-items: center;
+  min-width: 0;
 }
+.row-wide { grid-column: 1 / -1; }
 .row label { font-size: 14px; font-weight: 600; }
 .row output {
   text-align: right;
@@ -352,6 +355,9 @@ button {
   cursor: pointer;
 }
 button:hover { background: #1d4068; }
+@media (max-width: 1100px) {
+  .controls { grid-template-columns: 1fr; }
+}
 @media (max-width: 900px) {
   .row { grid-template-columns: 1fr; }
   .row output { text-align: left; }
@@ -395,7 +401,7 @@ button:hover { background: #1d4068; }
       <input id="poiSize" type="range" min="7" max="18" step="1" value="11" />
       <output id="poiSizeOut"></output>
     </div>
-    <div class="row" style="grid-template-columns:220px auto 1fr;">
+    <div class="row row-wide" style="grid-template-columns:220px auto 1fr;">
       <label>Playback</label>
       <button id="play" type="button">Play</button>
       <span style="font-size:13px;color:#54697f;">

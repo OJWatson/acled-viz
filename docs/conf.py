@@ -1,6 +1,6 @@
 project = "acled-viz"
 author = "acled-viz contributors"
-release = "0.2.0"
+release = "0.1.0"
 
 extensions = [
     "myst_parser",
@@ -22,4 +22,11 @@ html_static_path = ["_static"]
 html_theme_options = {
     "show_toc_level": 2,
     "navbar_align": "content",
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/OJWatson/acled-viz",
+            "icon": "fa-brands fa-github",
+        }
+    ],
 }

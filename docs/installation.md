@@ -1,41 +1,50 @@
 # Installation
 
-## Install
+## Install the package
 
 ```bash
 uv sync --extra dev --extra docs
 uv sync --extra dev --extra docs --extra osm
 ```
 
-Full mode uses a built-in lightweight ACLED OAuth wrapper (no `trace` install required).
-Set `ACLED_EMAIL` and `ACLED_PASSWORD`, or set `ACLED_CREDENTIALS_FILE` to a file containing
-email/password (JSON or 2-line plaintext). If credentials are unavailable, full mode can fall back
-to a local ACLED snapshot (for example, `acled_example.csv` in repo root).
+## ACLED credentials for full mode
+
+The package includes a lightweight built-in ACLED OAuth wrapper.
+
+Provide credentials via either:
+
+- `ACLED_EMAIL` + `ACLED_PASSWORD` environment variables, or
+- `ACLED_CREDENTIALS_FILE` pointing to a local credential file, or
+- `~/.config/acled/oauth_credentials.json`
+
+If credentials are unavailable, full mode can fall back to a local ACLED snapshot
+(for example, `acled_example.csv` in repo root).
+
 OSM overlays require `osmnx` and network access on first fetch, then reuse local cache files in `data/osm/`.
 
-## GitHub Actions secrets (for full-mode CI)
+## Local tests and checks
 
-Never commit ACLED credentials to git. If you need full-mode API calls in CI, add repo secrets:
+```bash
+uv run --extra dev ruff check .
+uv run --extra dev pytest -q
+```
 
-- `ACLED_EMAIL`
-- `ACLED_PASSWORD`
-
-Setup path in GitHub:
-
-1. Repository **Settings**
-2. **Secrets and variables** → **Actions**
-3. **New repository secret**
-4. Add `ACLED_EMAIL` and `ACLED_PASSWORD`
-
-The CI workflow includes an optional full-mode smoke step that runs only when both secrets are set.
-
-For GitHub Pages in this repo, gallery assets are expected to be generated and committed first; CI then builds Sphinx HTML without regenerating demo visuals.
-
-## Local gates
+Equivalent helper scripts:
 
 ```bash
 ./scripts/ci.sh
 ./scripts/test.sh
+```
+
+## GitHub Pages build flow
+
+This repository expects gallery assets to be generated and committed first. The docs workflow then
+builds Sphinx HTML for GitHub Pages without regenerating visualization artifacts during CI.
+
+Local example:
+
+```bash
+uv run acled-viz site build --mode demo
 ```
 
 ## CLI examples
