@@ -93,13 +93,29 @@ def _clip_line_to_bbox(
     lat_max: float,
     lon_min: float,
     lon_max: float,
-) -> list[list[float]]:
-    clipped = [
-        [lat, lon]
-        for lat, lon in line
-        if (lat_min <= lat <= lat_max) and (lon_min <= lon <= lon_max)
-    ]
-    return clipped
+) -> list[list[list[float]]]:
+    """Return in-bounds contiguous segments from a polyline.
+
+    Filtering all in-bounds points into one line can incorrectly stitch disjoint
+    segments together when a geometry exits and re-enters the bbox.
+    """
+    segments: list[list[list[float]]] = []
+    current: list[list[float]] = []
+
+    for lat, lon in line:
+        in_bounds = (lat_min <= lat <= lat_max) and (lon_min <= lon <= lon_max)
+        if in_bounds:
+            current.append([lat, lon])
+            continue
+
+        if len(current) >= 2:
+            segments.append(current)
+        current = []
+
+    if len(current) >= 2:
+        segments.append(current)
+
+    return segments
 
 
 def _geometry_points(geom: Any) -> list[tuple[float, float]]:
@@ -282,16 +298,17 @@ def _fetch_roads_features_osmnx(
                 continue
             for points in _geometry_lines(record.get("geometry")):
                 line = [[lat, lon] for lat, lon in points]
-                line = _clip_line_to_bbox(
+                clipped_segments = _clip_line_to_bbox(
                     line,
                     lat_min=lat_min,
                     lat_max=lat_max,
                     lon_min=lon_min,
                     lon_max=lon_max,
                 )
-                if len(line) < 2:
-                    continue
-                roads.append(_resample_line(line, max_points=48))
+                for clipped in clipped_segments:
+                    if len(clipped) < 2:
+                        continue
+                    roads.append(_resample_line(clipped, max_points=48))
 
         return _downsample_roads(roads)
     finally:
@@ -336,16 +353,17 @@ def _fetch_roads_graph_osmnx(
         for geom in edges.get("geometry", []):
             for points in _geometry_lines(geom):
                 line = [[lat, lon] for lat, lon in points]
-                line = _clip_line_to_bbox(
+                clipped_segments = _clip_line_to_bbox(
                     line,
                     lat_min=lat_min,
                     lat_max=lat_max,
                     lon_min=lon_min,
                     lon_max=lon_max,
                 )
-                if len(line) < 2:
-                    continue
-                roads.append(_resample_line(line, max_points=36))
+                for clipped in clipped_segments:
+                    if len(clipped) < 2:
+                        continue
+                    roads.append(_resample_line(clipped, max_points=36))
 
         return _downsample_roads(roads)
     finally:

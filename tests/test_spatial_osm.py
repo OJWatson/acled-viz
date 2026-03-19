@@ -70,3 +70,26 @@ def test_get_overlay_fetch_failure_returns_empty(tmp_path, monkeypatch) -> None:
 
     assert loaded.roads == []
     assert loaded.poi.empty
+
+
+def test_clip_line_to_bbox_keeps_disjoint_segments_separate() -> None:
+    line = [
+        [31.25, 34.25],
+        [31.30, 34.30],
+        [31.95, 34.95],
+        [31.31, 34.31],
+        [31.35, 34.35],
+    ]
+
+    clipped = osm._clip_line_to_bbox(
+        line,
+        lat_min=31.2,
+        lat_max=31.6,
+        lon_min=34.2,
+        lon_max=34.6,
+    )
+
+    assert clipped == [
+        [[31.25, 34.25], [31.30, 34.30]],
+        [[31.31, 34.31], [31.35, 34.35]],
+    ]

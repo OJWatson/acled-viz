@@ -468,16 +468,20 @@ function updatePlot() {
 
   const traces = [];
 
-  if (roadsToggle.checked && data.roads_x.length > 0) {
-    traces.push({
-      type: 'scattergl',
-      mode: 'lines',
-      name: 'roads',
-      x: data.roads_x,
-      y: data.roads_y,
-      line: {color: 'rgba(58,90,118,0.8)', width: 1.7},
-      hoverinfo: 'skip'
-    });
+  if (roadsToggle.checked && data.roads_traces.length > 0) {
+    for (let i = 0; i < data.roads_traces.length; i += 1) {
+      const road = data.roads_traces[i];
+      traces.push({
+        type: 'scatter',
+        mode: 'lines',
+        name: i === 0 ? 'roads' : undefined,
+        showlegend: i === 0,
+        x: road.x,
+        y: road.y,
+        line: {color: 'rgba(58,90,118,0.8)', width: 1.7},
+        hoverinfo: 'skip'
+      });
+    }
   }
 
   if (poiToggle.checked && data.poi_lat.length > 0) {
@@ -667,16 +671,18 @@ def build_points_tail_widget(
         "frame_day_indices": frame_day_indices,
         "x_range": [x_min - x_margin, x_max + x_margin],
         "y_range": [y_min - y_margin, y_max + y_margin],
-        "roads_x": [],
-        "roads_y": [],
+        "roads_traces": [],
         "poi_lat": [],
         "poi_lon": [],
         "poi_name": [],
     }
 
     if overlay is not None and show_roads and overlay.roads:
+        chunk_size = 80
+        roads_traces: list[dict[str, list[float | None]]] = []
         roads_x: list[float | None] = []
         roads_y: list[float | None] = []
+        chunk_count = 0
         for line in overlay.roads:
             if len(line) < 2:
                 continue
@@ -684,8 +690,15 @@ def build_points_tail_widget(
             roads_y.extend([pt[1] for pt in line])
             roads_x.append(None)
             roads_y.append(None)
-        payload["roads_x"] = roads_x
-        payload["roads_y"] = roads_y
+            chunk_count += 1
+            if chunk_count >= chunk_size:
+                roads_traces.append({"x": roads_x, "y": roads_y})
+                roads_x = []
+                roads_y = []
+                chunk_count = 0
+        if roads_x:
+            roads_traces.append({"x": roads_x, "y": roads_y})
+        payload["roads_traces"] = roads_traces
 
     if overlay is not None and show_poi and not overlay.poi.empty:
         payload["poi_lat"] = overlay.poi["latitude"].round(6).tolist()
@@ -703,9 +716,7 @@ def build_points_tail_widget(
             frame_max=frame_max,
             tail_default=tail_default,
             tail_max=tail_max,
-            roads_default=(
-                "checked" if show_roads and overlay is not None and overlay.roads else ""
-            ),
+            roads_default="",
             poi_default=(
                 "checked"
                 if show_poi and overlay is not None and not overlay.poi.empty

@@ -41,6 +41,9 @@ def test_build_gallery_demo_outputs_files(tmp_path, monkeypatch) -> None:
     assert assets.points_windowed_html.stat().st_size > 1000
     widget_html = assets.points_windowed_html.read_text(encoding="utf-8")
     assert "roadsToggle" in widget_html
+    assert 'id="roadsToggle" type="checkbox" checked' not in widget_html
+    assert '"roads_traces":[' in widget_html
+    assert '"roads_x":' not in widget_html
     assert "poiToggle" in widget_html
 
 
