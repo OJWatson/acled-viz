@@ -70,15 +70,68 @@ def test_resolve_acled_credentials_from_env(monkeypatch) -> None:
     assert password == "from-env"
 
 
+def test_resolve_acled_credentials_from_legacy_downloads_path(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("ACLED_EMAIL", raising=False)
+    monkeypatch.delenv("ACLED_PASSWORD", raising=False)
+    monkeypatch.delenv("ACLED_CREDENTIALS_FILE", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    legacy_path = tmp_path / "Downloads" / "acledcred"
+    legacy_path.parent.mkdir()
+    legacy_path.write_text("[email protected]\nfrom-downloads\n", encoding="utf-8")
+
+    email, password = _resolve_acled_credentials()
+
+    assert email == "[email protected]"
+    assert password == "from-downloads"
+
+
+def test_request_json_sends_acled_headers(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(request, timeout=30):
+        captured["headers"] = {
+            key.lower(): value for key, value in request.header_items()
+        }
+        captured["data"] = request.data.decode("utf-8")
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(acled_module, "urlopen", fake_urlopen)
+
+    acled_module._request_json(
+        url="https://example.test/oauth/token",
+        method="POST",
+        data={"client_id": "acled"},
+    )
+
+    assert captured["headers"]["user-agent"] == acled_module.ACLED_USER_AGENT
+    assert captured["headers"]["accept"] == "application/json"
+    assert captured["headers"]["content-type"] == "application/x-www-form-urlencoded"
+    assert captured["data"] == "client_id=acled"
+    assert captured["timeout"] == 30
+
+
 def test_get_access_token_uses_in_memory_cache(monkeypatch) -> None:
     acled_module._ACLED_TOKEN_CACHE["email"] = None
     acled_module._ACLED_TOKEN_CACHE["access_token"] = None
     acled_module._ACLED_TOKEN_CACHE["expires_at"] = 0.0
 
     calls = {"count": 0}
+    token_request_data = {}
 
     def fake_request_json(*, url, method="GET", headers=None, data=None, timeout=30):
         calls["count"] += 1
+        token_request_data.update(data or {})
         return {"access_token": "token-123", "expires_in": 3600}
 
     monkeypatch.setattr(acled_module, "_request_json", fake_request_json)
@@ -89,3 +142,4 @@ def test_get_access_token_uses_in_memory_cache(monkeypatch) -> None:
     assert first == "token-123"
     assert second == "token-123"
     assert calls["count"] == 1
+    assert token_request_data["scope"] == "authenticated"

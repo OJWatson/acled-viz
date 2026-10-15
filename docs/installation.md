@@ -15,7 +15,7 @@ Provide credentials via either:
 
 - `ACLED_EMAIL` + `ACLED_PASSWORD` environment variables, or
 - `ACLED_CREDENTIALS_FILE` pointing to a local credential file, or
-- `~/.config/acled/oauth_credentials.json`
+- `~/.config/acled/oauth_credentials.json`, `~/Downloads/acledcred`, or `~/Downloads/acledcreds`
 
 If credentials are unavailable, full mode can fall back to a local ACLED snapshot
 (for example, `acled_example.csv` in repo root).

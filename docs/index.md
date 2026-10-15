@@ -21,7 +21,7 @@ The storyboard combines spatial event points with a trailing window so shifts in
 
 ## Data Coverage
 
-- Current published gallery build in this repo uses Gaza ACLED fixture coverage from `2023-09-04` to `2024-12-04`.
+- Current published gallery build in this repo uses Gaza ACLED coverage from `2023-09-04` to `2025-05-22`.
 - If ACLED credentials are configured, local full-mode builds can extend past that horizon.
 
 ```{toctree}

@@ -716,7 +716,9 @@ def build_points_tail_widget(
             frame_max=frame_max,
             tail_default=tail_default,
             tail_max=tail_max,
-            roads_default="",
+            roads_default=(
+                "checked" if show_roads and overlay is not None and overlay.roads else ""
+            ),
             poi_default=(
                 "checked"
                 if show_poi and overlay is not None and not overlay.poi.empty

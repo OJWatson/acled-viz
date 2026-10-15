@@ -34,6 +34,7 @@ REQUIRED_COLUMNS = [
 
 ACLED_TOKEN_URL = "https://acleddata.com/oauth/token"
 ACLED_EVENTS_URL = "https://acleddata.com/api/acled/read"
+ACLED_USER_AGENT = "acled-viz/0.1 (+https://github.com/OJWatson/acled-viz)"
 ACLED_FIELDS = (
     "event_id_cnty|event_date|latitude|longitude|event_type|sub_event_type|"
     "fatalities|source|country|admin1"
@@ -163,6 +164,8 @@ def _resolve_acled_credentials() -> tuple[str, str]:
     candidate_paths.extend(
         [
             Path.home() / ".config" / "acled" / "oauth_credentials.json",
+            Path.home() / "Downloads" / "acledcred",
+            Path.home() / "Downloads" / "acledcreds",
         ]
     )
     for candidate in candidate_paths:
@@ -172,7 +175,9 @@ def _resolve_acled_credentials() -> tuple[str, str]:
 
     raise RuntimeError(
         "ACLED credentials are required for full mode. Set ACLED_EMAIL and ACLED_PASSWORD, "
-        "or point ACLED_CREDENTIALS_FILE to a file containing email/password."
+        "point ACLED_CREDENTIALS_FILE to a file containing email/password, or place a "
+        "credential file at ~/.config/acled/oauth_credentials.json, ~/Downloads/acledcred, "
+        "or ~/Downloads/acledcreds."
     )
 
 
@@ -186,6 +191,8 @@ def _request_json(
 ) -> dict[str, Any] | list[dict[str, Any]]:
     payload: bytes | None = None
     request_headers = headers.copy() if headers else {}
+    request_headers.setdefault("User-Agent", ACLED_USER_AGENT)
+    request_headers.setdefault("Accept", "application/json")
     if data is not None:
         payload = urlencode(data).encode("utf-8")
         request_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
@@ -224,6 +231,7 @@ def _get_access_token(email: str, password: str) -> str:
             "password": password,
             "grant_type": "password",
             "client_id": "acled",
+            "scope": "authenticated",
         },
     )
     if not isinstance(token_payload, dict) or "access_token" not in token_payload:
